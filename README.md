@@ -17,12 +17,7 @@ Ce repository est optimisé pour le déploiement sur Railway.
 ### Variables d'environnement requises
 
 ```env
-OPENEPI_BASE_URL=https://api.openepi.io
-OPENEPI_AUTH_URL=https://auth.openepi.io/realms/openepi/protocol/openid-connect/token
-OPENEPI_CLIENT_ID=aresgn-testpestsAPI
-OPENEPI_CLIENT_SECRET=gHrAAcKkMkvEDfDijdqqBXULbqjGzlyK
-WHATSAPP_SESSION_PATH=/app/sessions
-NODE_ENV=production
+
 ```
 
 ## 📱 Première connexion
