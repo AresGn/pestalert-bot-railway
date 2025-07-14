@@ -18,8 +18,8 @@ WORKDIR /app
 COPY package*.json ./
 COPY tsconfig.json ./
 
-# Installer les dépendances
-RUN npm ci --only=production
+# Installer TOUTES les dépendances (dev incluses pour le build)
+RUN npm ci
 
 # Copier le code source
 COPY src/ ./src/
@@ -27,6 +27,9 @@ COPY audio/ ./audio/
 
 # Construire l'application
 RUN npm run build
+
+# Nettoyer les dépendances de développement après le build
+RUN npm prune --production
 
 # Créer le répertoire pour les sessions
 RUN mkdir -p ./sessions
