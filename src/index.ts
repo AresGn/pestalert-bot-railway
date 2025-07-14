@@ -51,6 +51,9 @@ const BOT_START_TIME = Date.now();
 console.log(`🚀 Bot démarré à: ${new Date(BOT_START_TIME).toLocaleString()}`);
 console.log(`⏰ Timestamp de démarrage: ${BOT_START_TIME}`);
 
+// Set pour éviter de traiter le même message plusieurs fois
+const processedMessages = new Set();
+
 // Démarrer le nettoyage automatique des sessions
 userSessionService.startSessionCleanup();
 
@@ -118,7 +121,71 @@ client.on('ready', async () => {
   setInterval(() => {
     console.log(`💓 Heartbeat - Bot toujours connecté: ${new Date().toLocaleString()}`);
   }, 60000); // Toutes les minutes
+
+  // Polling manuel pour vérifier les chats (workaround pour Railway)
+  setInterval(async () => {
+    try {
+      console.log('🔍 Vérification manuelle des nouveaux messages...');
+      const chats = await client.getChats();
+      const privateChats = chats.filter(chat => !chat.isGroup);
+
+      for (const chat of privateChats.slice(0, 10)) { // Limiter à 10 chats pour éviter la surcharge
+        const messages = await chat.fetchMessages({ limit: 1 });
+        if (messages.length > 0) {
+          const lastMessage = messages[0];
+          const messageTime = lastMessage.timestamp * 1000;
+
+          // Vérifier si c'est un nouveau message depuis le démarrage et pas déjà traité
+          const messageId = `${lastMessage.id._serialized}`;
+          if (messageTime > BOT_START_TIME && !lastMessage.fromMe && !processedMessages.has(messageId)) {
+            console.log(`📨 Nouveau message détecté via polling: "${lastMessage.body}" de ${chat.name}`);
+            processedMessages.add(messageId);
+            // Déclencher manuellement le traitement du message
+            handleMessageManually(lastMessage);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erreur lors du polling des messages:', error);
+    }
+  }, 30000); // Toutes les 30 secondes
 });
+
+// Fonction pour traiter manuellement les messages (workaround)
+async function handleMessageManually(message: any) {
+  console.log('🔄 Traitement manuel du message...');
+
+  try {
+    const contact = await message.getContact();
+    const chat = await message.getChat();
+
+    // Même logique que l'événement message normal
+    console.log(`\n🔍 MESSAGE REÇU - POLLING:`);
+    console.log(`   📱 De: ${contact.name || contact.number}`);
+    console.log(`   💬 Contenu: "${message.body}"`);
+    console.log(`   ⏰ Timestamp: ${new Date(message.timestamp * 1000).toLocaleString()}`);
+
+    // Vérifier si c'est le message de bienvenue
+    if (message.body.trim() === 'Hi PestAlerte 👋') {
+      console.log('👋 Message de bienvenue détecté via polling !');
+      await message.reply('🎉 Bonjour ! Je suis PestAlert, votre assistant agricole !\n\n📋 Menu principal :\n1️⃣ Analyse de santé des cultures\n2️⃣ Détection de parasites\n3️⃣ Système d\'alerte\n\nTapez le numéro de votre choix (1, 2 ou 3)');
+      return;
+    }
+
+    // Vérifier les commandes
+    if (message.body.startsWith('!')) {
+      if (message.body === '!help') {
+        await message.reply('🤖 *Commandes PestAlert*\n\n🌱 **Analyse:**\n• Hi PestAlerte 👋 - Menu principal\n• Envoyez une photo - Analyse automatique\n\n📋 **Informations:**\n• !help - Cette aide\n• !status - État du système');
+      } else if (message.body === '!status') {
+        await message.reply('📊 *État du Système PestAlert*\n\n✅ **Services:**\n• Bot WhatsApp: En ligne\n• Analyse d\'images: Opérationnel\n• Système surveillé 24h/24');
+      }
+      return;
+    }
+
+  } catch (error) {
+    console.error('❌ Erreur lors du traitement manuel:', error);
+  }
+}
 
 client.on('message', async (message) => {
   console.log('🎯 ÉVÉNEMENT MESSAGE DÉCLENCHÉ !'); // Log pour confirmer que l'événement se déclenche
