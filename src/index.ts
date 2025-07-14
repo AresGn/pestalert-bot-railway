@@ -54,23 +54,51 @@ console.log(`⏰ Timestamp de démarrage: ${BOT_START_TIME}`);
 // Démarrer le nettoyage automatique des sessions
 userSessionService.startSessionCleanup();
 
+// Configuration Puppeteer optimisée pour Railway
+const puppeteerConfig: any = {
+  headless: true,
+  args: [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-accelerated-2d-canvas',
+    '--no-first-run',
+    '--no-zygote',
+    '--single-process',
+    '--disable-gpu',
+    '--disable-web-security',
+    '--disable-features=VizDisplayCompositor',
+    '--disable-background-timer-throttling',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--disable-field-trial-config',
+    '--disable-back-forward-cache',
+    '--disable-hang-monitor',
+    '--disable-ipc-flooding-protection',
+    '--disable-default-apps',
+    '--disable-sync',
+    '--disable-translate',
+    '--hide-scrollbars',
+    '--mute-audio',
+    '--no-default-browser-check',
+    '--no-pings',
+    '--window-size=1366,768'
+  ],
+  defaultViewport: null,
+  ignoreDefaultArgs: ['--disable-extensions'],
+  timeout: 60000
+};
+
+// Ajouter le chemin exécutable si défini (pour Railway)
+if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+  puppeteerConfig.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+}
+
 const client = new Client({
   authStrategy: new LocalAuth({
     dataPath: process.env.WHATSAPP_SESSION_PATH || './sessions'
   }),
-  puppeteer: {
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
-      '--disable-gpu'
-    ]
-  }
+  puppeteer: puppeteerConfig
 });
 
 // Événements du client
@@ -607,13 +635,61 @@ Un expert sera notifié immédiatement.
 // Gestion des erreurs
 client.on('auth_failure', (msg) => {
   console.error('❌ Échec de l\'authentification:', msg);
+  logger.logBotActivity('ERROR', 'Échec authentification WhatsApp', { error: msg });
 });
 
 client.on('disconnected', (reason) => {
   console.log('📵 Client déconnecté:', reason);
+  logger.logBotActivity('WARN', 'Client WhatsApp déconnecté', { reason });
+
+  // Tentative de reconnexion après 30 secondes
+  setTimeout(() => {
+    console.log('🔄 Tentative de reconnexion...');
+    client.initialize().catch(err => {
+      console.error('❌ Erreur lors de la reconnexion:', err);
+    });
+  }, 30000);
 });
 
-// Démarrage du bot
-client.initialize();
+// Gestion des erreurs Puppeteer spécifiques
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  if (reason && reason.toString().includes('Protocol error')) {
+    console.log('🔄 Erreur Puppeteer détectée, redémarrage dans 60 secondes...');
+    setTimeout(() => {
+      process.exit(1); // Railway redémarrera automatiquement
+    }, 60000);
+  }
+});
 
-console.log('🤖 Démarrage du bot WhatsApp PestAlert...');
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  if (error.message.includes('Protocol error') || error.message.includes('Session closed')) {
+    console.log('🔄 Erreur critique Puppeteer, redémarrage immédiat...');
+    process.exit(1); // Railway redémarrera automatiquement
+  }
+});
+
+// Fonction de démarrage avec retry
+async function startBot(retryCount = 0) {
+  const maxRetries = 3;
+
+  try {
+    console.log('🤖 Démarrage du bot WhatsApp PestAlert...');
+    await client.initialize();
+  } catch (error) {
+    console.error(`❌ Erreur lors du démarrage (tentative ${retryCount + 1}/${maxRetries}):`, error);
+
+    if (retryCount < maxRetries) {
+      const delay = (retryCount + 1) * 30000; // 30s, 60s, 90s
+      console.log(`🔄 Nouvelle tentative dans ${delay/1000} secondes...`);
+      setTimeout(() => startBot(retryCount + 1), delay);
+    } else {
+      console.error('❌ Échec définitif du démarrage après', maxRetries, 'tentatives');
+      process.exit(1);
+    }
+  }
+}
+
+// Démarrage du bot avec gestion d'erreur
+startBot();

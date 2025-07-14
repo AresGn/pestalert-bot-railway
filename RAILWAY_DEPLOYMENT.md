@@ -46,6 +46,11 @@ LOG_LEVEL=info
 # Puppeteer Configuration (automatique avec Docker)
 PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+DISPLAY=:99
+CHROME_BIN=/usr/bin/google-chrome-stable
+
+# Dashboard Integration (optionnel)
+DASHBOARD_INTEGRATION_ENABLED=false
 ```
 
 ### 4. Configuration du build
@@ -123,6 +128,21 @@ Surveillez les logs pour voir :
 
 1. **Augmentez le timeout** dans `railway.json`
 2. **Optimisez le Dockerfile** si nécessaire
+
+### Problème : Erreurs Puppeteer "Protocol error" ou "Session closed"
+
+Ces erreurs sont courantes sur Railway. Solutions :
+
+1. **Redémarrez le service** - Railway redémarrera automatiquement
+2. **Vérifiez les ressources** - Augmentez la RAM si nécessaire (Plan Pro)
+3. **Surveillez les logs** - Le bot a un système de retry automatique
+4. **Variables d'environnement** - Vérifiez que toutes les variables Puppeteer sont définies
+
+### Problème : Bot se déconnecte fréquemment
+
+1. **Vérifiez la stabilité réseau** de Railway
+2. **Le bot a une reconnexion automatique** après 30 secondes
+3. **Surveillez les métriques** de performance dans Railway
 
 ## 💰 Coûts estimés
 
