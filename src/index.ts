@@ -54,16 +54,10 @@ console.log(`⏰ Timestamp de démarrage: ${BOT_START_TIME}`);
 // Démarrer le nettoyage automatique des sessions
 userSessionService.startSessionCleanup();
 
-// Configuration Puppeteer simplifiée pour Railway
+// Configuration Puppeteer ultra-basique pour Railway
 const puppeteerConfig: any = {
   headless: true,
-  args: [
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage',
-    '--disable-gpu',
-    '--single-process'
-  ]
+  args: ['--no-sandbox', '--disable-setuid-sandbox']
 };
 
 // Ajouter le chemin exécutable si défini (pour Railway)

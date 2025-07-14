@@ -6,6 +6,7 @@ dist/
 *.log
 sessions/*
 !sessions/.gitkeep
+test-sessions/
 .DS_Store
 
 # Fichiers contenant des secrets (si créés localement)
