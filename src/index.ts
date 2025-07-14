@@ -81,7 +81,7 @@ client.on('qr', (qr) => {
   console.log('\n💡 Astuce: Utilisez le lien ci-dessus pour un QR code plus petit et plus facile à scanner !');
 });
 
-client.on('ready', () => {
+client.on('ready', async () => {
   console.log('✅ Bot WhatsApp PestAlert connecté!');
   console.log('🔒 FILTRES DE SÉCURITÉ ACTIVÉS:');
   console.log('   - Ignore TOUS les messages de groupes');
@@ -89,10 +89,40 @@ client.on('ready', () => {
   console.log('   - Ignore TOUS les messages antérieurs au démarrage');
   console.log('   - Répond SEULEMENT aux messages privés reçus APRÈS le démarrage');
   console.log(`   - Timestamp de démarrage: ${new Date(BOT_START_TIME).toLocaleString()}`);
+
+  // Informations de debug sur la connexion
+  try {
+    const info = client.info;
+    console.log(`📱 Numéro du bot: ${info.wid.user}`);
+    console.log(`👤 Nom du bot: ${info.pushname}`);
+    console.log(`🔗 État de connexion: READY`);
+
+    // Test d'envoi de message à soi-même pour vérifier la connexion
+    setTimeout(async () => {
+      console.log('🧪 Test de connexion - envoi d\'un message de test...');
+      try {
+        const testMessage = await client.sendMessage(info.wid._serialized, '🤖 Test de connexion - Bot opérationnel');
+        console.log('✅ Test de connexion réussi - Le bot peut envoyer des messages');
+      } catch (error) {
+        console.error('❌ Test de connexion échoué:', error);
+      }
+    }, 5000);
+
+  } catch (error) {
+    console.error('❌ Erreur lors de la récupération des infos:', error);
+  }
+
   logger.logBotActivity('SYSTEM', 'Bot WhatsApp connecté et prêt avec filtres de sécurité');
+
+  // Heartbeat pour surveiller la connexion
+  setInterval(() => {
+    console.log(`💓 Heartbeat - Bot toujours connecté: ${new Date().toLocaleString()}`);
+  }, 60000); // Toutes les minutes
 });
 
 client.on('message', async (message) => {
+  console.log('🎯 ÉVÉNEMENT MESSAGE DÉCLENCHÉ !'); // Log pour confirmer que l'événement se déclenche
+
   const contact = await message.getContact();
   const chat = await message.getChat();
 
