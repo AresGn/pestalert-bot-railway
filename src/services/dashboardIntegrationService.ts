@@ -1,21 +1,20 @@
-import { DashboardDataService } from '@pestalert/core/src/services/dashboardDataService';
 import { LogEntry } from './loggingService';
 
 /**
  * Service d'intégration pour envoyer les données du bot vers le dashboard
+ * Version simplifiée pour le déploiement Railway (sans dépendance Prisma)
  */
 export class DashboardIntegrationService {
-  private dashboardService: DashboardDataService;
   private isEnabled: boolean;
 
   constructor() {
-    this.dashboardService = new DashboardDataService();
-    this.isEnabled = process.env.DASHBOARD_INTEGRATION_ENABLED !== 'false';
-    
+    // Désactiver par défaut pour le déploiement Railway
+    this.isEnabled = process.env.DASHBOARD_INTEGRATION_ENABLED === 'true';
+
     if (this.isEnabled) {
       console.log('📊 Dashboard Integration Service activé');
     } else {
-      console.log('📊 Dashboard Integration Service désactivé');
+      console.log('📊 Dashboard Integration Service désactivé (version Railway)');
     }
   }
 
@@ -25,12 +24,8 @@ export class DashboardIntegrationService {
   async recordUserSession(userId: string, userPhone: string, userName?: string, location?: any) {
     if (!this.isEnabled) return;
 
-    try {
-      await this.dashboardService.recordBotSession(userId, userPhone, userName, location);
-      console.log(`📊 Session enregistrée pour ${userPhone}`);
-    } catch (error) {
-      console.error('❌ Erreur lors de l\'enregistrement de session:', error);
-    }
+    // Version simplifiée pour Railway - logging uniquement
+    console.log(`📊 [Railway] Session utilisateur: ${userPhone} (${userId})`);
   }
 
   /**
@@ -52,12 +47,9 @@ export class DashboardIntegrationService {
   }) {
     if (!this.isEnabled) return;
 
-    try {
-      await this.dashboardService.recordImageAnalysis(data);
-      console.log(`📊 Analyse enregistrée: ${data.analysisType} - ${data.success ? 'Succès' : 'Échec'}`);
-    } catch (error) {
-      console.error('❌ Erreur lors de l\'enregistrement d\'analyse:', error);
-    }
+    // Version simplifiée pour Railway - logging uniquement
+    console.log(`📊 [Railway] Analyse ${data.analysisType}: ${data.success ? 'Succès' : 'Échec'} - ${data.userPhone}`);
+    if (data.confidence) console.log(`📊 [Railway] Confiance: ${data.confidence}%`);
   }
 
   /**
@@ -66,11 +58,8 @@ export class DashboardIntegrationService {
   async recordSystemMetric(service: string, metric: string, value: number, unit?: string, metadata?: any) {
     if (!this.isEnabled) return;
 
-    try {
-      await this.dashboardService.recordSystemMetric(service, metric, value, unit, metadata);
-    } catch (error) {
-      console.error('❌ Erreur lors de l\'enregistrement de métrique:', error);
-    }
+    // Version simplifiée pour Railway - logging uniquement
+    console.log(`📊 [Railway] Métrique ${service}.${metric}: ${value}${unit || ''}`);
   }
 
   /**
@@ -79,21 +68,13 @@ export class DashboardIntegrationService {
   async recordBotPerformanceMetrics() {
     if (!this.isEnabled) return;
 
-    try {
-      // Métriques de mémoire
-      const memoryUsage = process.memoryUsage();
-      await this.recordSystemMetric('bot', 'memory_usage', memoryUsage.heapUsed / 1024 / 1024, 'MB');
-      
-      // Uptime
-      await this.recordSystemMetric('bot', 'uptime', process.uptime(), 'seconds');
-      
-      // Disponibilité (toujours 100% si le bot fonctionne)
-      await this.recordSystemMetric('bot', 'availability', 100, '%');
-      
-      console.log('📊 Métriques de performance du bot enregistrées');
-    } catch (error) {
-      console.error('❌ Erreur lors de l\'enregistrement des métriques de performance:', error);
-    }
+    // Version simplifiée pour Railway - logging uniquement
+    const memoryUsage = process.memoryUsage();
+    await this.recordSystemMetric('bot', 'memory_usage', memoryUsage.heapUsed / 1024 / 1024, 'MB');
+    await this.recordSystemMetric('bot', 'uptime', process.uptime(), 'seconds');
+    await this.recordSystemMetric('bot', 'availability', 100, '%');
+
+    console.log('📊 [Railway] Métriques de performance du bot enregistrées');
   }
 
   /**
@@ -102,13 +83,8 @@ export class DashboardIntegrationService {
   async processActivityLog(logEntry: LogEntry) {
     if (!this.isEnabled) return;
 
-    try {
-      // Enregistrer dans la table des logs d'activité
-      // Cette méthode sera implémentée dans le DashboardDataService
-      console.log(`📊 Log traité: ${logEntry.category} - ${logEntry.level}`);
-    } catch (error) {
-      console.error('❌ Erreur lors du traitement du log:', error);
-    }
+    // Version simplifiée pour Railway - logging uniquement
+    console.log(`📊 [Railway] Log traité: ${logEntry.category} - ${logEntry.level}`);
   }
 
   /**
@@ -137,7 +113,7 @@ export class DashboardIntegrationService {
       this.recordBotPerformanceMetrics();
     }, 5 * 60 * 1000);
 
-    console.log('📊 Collecte périodique de métriques démarrée (5 min)');
+    console.log('📊 [Railway] Collecte périodique de métriques démarrée (5 min)');
   }
 
   /**
@@ -226,12 +202,9 @@ export class DashboardIntegrationService {
   async getQuickStats() {
     if (!this.isEnabled) return null;
 
-    try {
-      return await this.dashboardService.getDashboardMetrics();
-    } catch (error) {
-      console.error('❌ Erreur lors de la récupération des statistiques:', error);
-      return null;
-    }
+    // Version simplifiée pour Railway - pas de données réelles
+    console.log('📊 [Railway] Récupération des statistiques (non implémenté)');
+    return null;
   }
 
   /**
@@ -239,8 +212,7 @@ export class DashboardIntegrationService {
    */
   async shutdown() {
     if (this.isEnabled) {
-      await this.dashboardService.disconnect();
-      console.log('📊 Dashboard Integration Service fermé');
+      console.log('📊 [Railway] Dashboard Integration Service fermé');
     }
   }
 }
