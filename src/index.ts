@@ -76,6 +76,9 @@ const client = new Client({
 client.on('qr', (qr) => {
   console.log('📱 Scannez ce QR code avec WhatsApp:');
   qrcode.generate(qr, { small: true });
+  console.log('\n🔗 Ou copiez ce lien dans votre navigateur:');
+  console.log(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qr)}`);
+  console.log('\n💡 Astuce: Utilisez le lien ci-dessus pour un QR code plus petit et plus facile à scanner !');
 });
 
 client.on('ready', () => {
