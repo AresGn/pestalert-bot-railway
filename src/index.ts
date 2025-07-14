@@ -54,39 +54,16 @@ console.log(`⏰ Timestamp de démarrage: ${BOT_START_TIME}`);
 // Démarrer le nettoyage automatique des sessions
 userSessionService.startSessionCleanup();
 
-// Configuration Puppeteer optimisée pour Railway
+// Configuration Puppeteer simplifiée pour Railway
 const puppeteerConfig: any = {
   headless: true,
   args: [
     '--no-sandbox',
     '--disable-setuid-sandbox',
     '--disable-dev-shm-usage',
-    '--disable-accelerated-2d-canvas',
-    '--no-first-run',
-    '--no-zygote',
-    '--single-process',
     '--disable-gpu',
-    '--disable-web-security',
-    '--disable-features=VizDisplayCompositor',
-    '--disable-background-timer-throttling',
-    '--disable-backgrounding-occluded-windows',
-    '--disable-renderer-backgrounding',
-    '--disable-field-trial-config',
-    '--disable-back-forward-cache',
-    '--disable-hang-monitor',
-    '--disable-ipc-flooding-protection',
-    '--disable-default-apps',
-    '--disable-sync',
-    '--disable-translate',
-    '--hide-scrollbars',
-    '--mute-audio',
-    '--no-default-browser-check',
-    '--no-pings',
-    '--window-size=1366,768'
-  ],
-  defaultViewport: null,
-  ignoreDefaultArgs: ['--disable-extensions'],
-  timeout: 60000
+    '--single-process'
+  ]
 };
 
 // Ajouter le chemin exécutable si défini (pour Railway)
