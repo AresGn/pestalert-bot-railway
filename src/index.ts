@@ -96,25 +96,37 @@ client.on('message', async (message) => {
   const contact = await message.getContact();
   const chat = await message.getChat();
 
+  // LOGS DE DEBUG DÉTAILLÉS
+  const messageTimestamp = message.timestamp * 1000;
+  console.log(`\n🔍 MESSAGE REÇU - DEBUG:`);
+  console.log(`   📱 De: ${contact.name || contact.number}`);
+  console.log(`   💬 Contenu: "${message.body}"`);
+  console.log(`   ⏰ Timestamp: ${new Date(messageTimestamp).toLocaleString()}`);
+  console.log(`   🚀 Bot démarré: ${new Date(BOT_START_TIME).toLocaleString()}`);
+  console.log(`   👥 Groupe: ${chat.isGroup}`);
+  console.log(`   🤖 De moi: ${message.fromMe}`);
+
   // FILTRES STRICTS - TRÈS IMPORTANT
 
   // 1. Ignorer TOUS les messages envoyés par le bot lui-même
   if (message.fromMe) {
+    console.log(`🚫 FILTRE 1: Message ignoré (envoyé par le bot)`);
     return;
   }
 
   // 2. Ignorer TOUS les messages de groupes
   if (chat.isGroup) {
-    console.log(`🚫 Message de groupe ignoré: ${chat.name}`);
+    console.log(`🚫 FILTRE 2: Message de groupe ignoré: ${chat.name}`);
     return;
   }
 
   // 3. Ignorer les messages antérieurs au démarrage du bot
-  const messageTimestamp = message.timestamp * 1000; // WhatsApp timestamp en secondes
   if (messageTimestamp < BOT_START_TIME) {
-    console.log(`🚫 Message ancien ignoré (${new Date(messageTimestamp).toLocaleString()})`);
+    console.log(`🚫 FILTRE 3: Message ancien ignoré (${new Date(messageTimestamp).toLocaleString()} < ${new Date(BOT_START_TIME).toLocaleString()})`);
     return;
   }
+
+  console.log(`✅ MESSAGE ACCEPTÉ - Traitement en cours...`);
 
   // 4. Vérifier que c'est bien un chat privé
   if (!chat.isGroup && !message.fromMe) {
