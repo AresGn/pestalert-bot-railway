@@ -1,7 +1,13 @@
 node_modules/
 dist/
 .env
+.env.local
+.env.production
 *.log
 sessions/*
 !sessions/.gitkeep
 .DS_Store
+
+# Fichiers contenant des secrets (si créés localement)
+config/secrets.json
+config/api-keys.json

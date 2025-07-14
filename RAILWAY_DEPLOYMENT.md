@@ -28,7 +28,11 @@ Dans l'interface Railway, ajoutez ces variables :
 
 ```env
 # OpenEPI Configuration
-
+OPENEPI_BASE_URL=https://api.openepi.io
+OPENEPI_AUTH_URL=https://auth.openepi.io/realms/openepi/protocol/openid-connect/token
+OPENEPI_CLIENT_ID=your_openepi_client_id
+OPENEPI_CLIENT_SECRET=your_openepi_client_secret
+OPENEPI_TIMEOUT=30000
 
 # WhatsApp Configuration
 WHATSAPP_SESSION_PATH=/app/sessions
