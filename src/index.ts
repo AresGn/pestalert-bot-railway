@@ -9,6 +9,7 @@ import { MenuService } from './services/menuService';
 import { HealthAnalysisService } from './services/healthAnalysisService';
 import { AudioService } from './services/audioService';
 import { AlertService } from './services/alertService';
+import { dashboardIntegration } from './services/dashboardIntegrationService';
 import { FarmerData } from './types';
 
 dotenv.config();
@@ -92,6 +93,19 @@ client.on('ready', async () => {
   console.log('   - Ignore TOUS les messages antérieurs au démarrage');
   console.log('   - Répond SEULEMENT aux messages privés reçus APRÈS le démarrage');
   console.log(`   - Timestamp de démarrage: ${new Date(BOT_START_TIME).toLocaleString()}`);
+
+  // Initialiser l'intégration dashboard
+  try {
+    const authenticated = await dashboardIntegration.authenticate();
+    if (authenticated) {
+      console.log('📊 ✅ Dashboard integration activée');
+      dashboardIntegration.startPeriodicMetricsCollection();
+    } else {
+      console.log('📊 ⚠️ Dashboard integration non disponible (mode local)');
+    }
+  } catch (error) {
+    console.log('📊 ❌ Erreur initialisation dashboard:', error);
+  }
 
   // Informations de debug sur la connexion
   try {
