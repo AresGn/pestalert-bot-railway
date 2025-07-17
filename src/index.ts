@@ -10,6 +10,7 @@ import { HealthAnalysisService } from './services/healthAnalysisService';
 import { AudioService } from './services/audioService';
 import { AlertService } from './services/alertService';
 import { dashboardIntegration } from './services/dashboardIntegrationService';
+import { AuthorizationService } from './services/authorizationService';
 import { FarmerData } from './types';
 
 dotenv.config();
@@ -46,6 +47,7 @@ const audioService = new AudioService();
 const menuService = new MenuService(userSessionService, audioService);
 const healthAnalysisService = new HealthAnalysisService();
 const alertService = new AlertService();
+const authorizationService = new AuthorizationService();
 
 // Timestamp de démarrage du bot - IMPORTANT pour ignorer les anciens messages
 const BOT_START_TIME = Date.now();
@@ -71,18 +73,34 @@ if (process.env.PUPPETEER_EXECUTABLE_PATH) {
 
 const client = new Client({
   authStrategy: new LocalAuth({
-    dataPath: process.env.WHATSAPP_SESSION_PATH || './sessions'
+    dataPath: process.env.WHATSAPP_SESSION_PATH || './sessions',
+    clientId: 'pestalert-bot' // Identifiant unique pour éviter les conflits
   }),
-  puppeteer: puppeteerConfig
+  puppeteer: puppeteerConfig,
+  webVersionCache: {
+    type: 'remote',
+    remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+  }
 });
 
 // Événements du client
 client.on('qr', (qr) => {
   console.log('📱 Scannez ce QR code avec WhatsApp:');
-  qrcode.generate(qr, { small: true });
-  console.log('\n🔗 Ou copiez ce lien dans votre navigateur:');
-  console.log(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qr)}`);
-  console.log('\n💡 Astuce: Utilisez le lien ci-dessus pour un QR code plus petit et plus facile à scanner !');
+
+  // Vérifier que qr n'est pas undefined avant de l'utiliser
+  if (qr && typeof qr === 'string' && qr.trim() !== '') {
+    qrcode.generate(qr, { small: true });
+    console.log('\n🔗 Ou copiez ce lien dans votre navigateur:');
+    console.log(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qr)}`);
+    console.log('\n💡 Astuce: Utilisez le lien ci-dessus pour un QR code plus petit et plus facile à scanner !');
+  } else {
+    console.log('⚠️ QR code invalide reçu. Redémarrage du client...');
+    setTimeout(() => {
+      client.destroy().then(() => {
+        client.initialize();
+      });
+    }, 3000);
+  }
 });
 
 client.on('ready', async () => {
@@ -137,8 +155,14 @@ client.on('ready', async () => {
   }, 60000); // Toutes les minutes
 
   // Polling manuel pour vérifier les chats (workaround pour Railway)
-  setInterval(async () => {
+  const pollingInterval = setInterval(async () => {
     try {
+      // Vérifier d'abord si le client est toujours connecté
+      if (!client || !client.info) {
+        console.log('⚠️ Client non connecté, arrêt du polling');
+        return;
+      }
+
       console.log('🔍 Vérification manuelle des nouveaux messages...');
       const chats = await client.getChats();
       const privateChats = chats.filter(chat => !chat.isGroup);
@@ -161,6 +185,15 @@ client.on('ready', async () => {
       }
     } catch (error) {
       console.error('❌ Erreur lors du polling des messages:', error);
+
+      // Si c'est une erreur de session fermée, arrêter le polling et redémarrer
+      if (error.message.includes('Session closed') || error.message.includes('Protocol error')) {
+        console.log('🔄 Session fermée détectée, redémarrage du bot...');
+        clearInterval(pollingInterval);
+        setTimeout(() => {
+          process.exit(1); // Railway redémarrera automatiquement
+        }, 5000);
+      }
     }
   }, 30000); // Toutes les 30 secondes
 });
@@ -206,6 +239,46 @@ client.on('message', async (message) => {
 
   const contact = await message.getContact();
   const chat = await message.getChat();
+
+  // 🔐 VÉRIFICATION D'AUTORISATION
+  const authResult = authorizationService.checkAuthorization(message.from);
+
+  if (!authResult.allowed) {
+    console.log(`🚫 ACCÈS REFUSÉ: ${message.from} - ${authResult.reason}`);
+
+    // Alerter les admins si configuré
+    if (authResult.shouldAlert) {
+      const adminNumbers = authorizationService.getAdminNumbers();
+      const alertMessage = `🚨 *Tentative d'accès non autorisée*\n\n` +
+        `📱 Numéro: ${message.from}\n` +
+        `👤 Contact: ${contact.name || 'Inconnu'}\n` +
+        `💬 Message: "${message.body}"\n` +
+        `⏰ Heure: ${new Date().toLocaleString()}\n` +
+        `❌ Raison: ${authResult.reason}`;
+
+      for (const adminNumber of adminNumbers) {
+        try {
+          await client.sendMessage(adminNumber, alertMessage);
+        } catch (error) {
+          console.error(`❌ Erreur envoi alerte admin ${adminNumber}:`, error);
+        }
+      }
+    }
+
+    // Optionnel : Répondre à l'utilisateur non autorisé
+    try {
+      await message.reply('🚫 Désolé, vous n\'êtes pas autorisé à utiliser ce bot.');
+    } catch (error) {
+      console.error('❌ Erreur réponse non autorisée:', error);
+    }
+
+    return; // Arrêter le traitement du message
+  }
+
+  // Log pour les utilisateurs autorisés
+  console.log(`✅ ACCÈS AUTORISÉ: ${message.from} - ${authResult.reason}${authResult.isAdmin ? ' (ADMIN)' : ''}`);
+
+  // Continuer avec le traitement normal du message...
 
   // LOGS DE DEBUG DÉTAILLÉS
   const messageTimestamp = message.timestamp * 1000;
@@ -718,6 +791,91 @@ Un expert sera notifié immédiatement.
 📷 Envoyez une photo pour diagnostic précis !`);
       break;
 
+    // 🔐 COMMANDES D'AUTORISATION (Admin seulement)
+    case '!auth':
+      if (!authorizationService.isAdmin(message.from)) {
+        await message.reply('🚫 Cette commande est réservée aux administrateurs.');
+        break;
+      }
+
+      const authArgs = message.body.split(' ').slice(1);
+      if (authArgs.length === 0) {
+        await message.reply(authorizationService.getAdminHelp());
+        break;
+      }
+
+      const authCommand = authArgs[0].toLowerCase();
+
+      switch (authCommand) {
+        case 'stats':
+          const stats = authorizationService.getAuthStats();
+          const statsMessage = `📊 *Statistiques d'Autorisation*\n\n` +
+            `🔧 Mode de filtrage: ${stats.filterMode}\n` +
+            `👑 Administrateurs: ${stats.adminCount}\n` +
+            `✅ Utilisateurs autorisés: ${stats.allowedUsersCount}\n` +
+            `🌍 Pays autorisés: ${stats.allowedCountriesCount}\n` +
+            `🚫 Tentatives non autorisées: ${stats.unauthorizedAttempts}`;
+          await message.reply(statsMessage);
+          break;
+
+        case 'mode':
+          if (authArgs.length < 2) {
+            await message.reply('❌ Usage: !auth mode <whitelist|country|disabled>');
+            break;
+          }
+
+          const newMode = authArgs[1].toLowerCase() as 'whitelist' | 'country' | 'disabled';
+          if (!['whitelist', 'country', 'disabled'].includes(newMode)) {
+            await message.reply('❌ Mode invalide. Utilisez: whitelist, country, ou disabled');
+            break;
+          }
+
+          if (authorizationService.setFilterMode(newMode, message.from)) {
+            await message.reply(`✅ Mode de filtrage changé vers: ${newMode}`);
+          } else {
+            await message.reply('❌ Erreur lors du changement de mode');
+          }
+          break;
+
+        case 'add':
+          if (authArgs.length < 2) {
+            await message.reply('❌ Usage: !auth add +22912345678');
+            break;
+          }
+
+          const numberToAdd = authArgs[1].replace('+', '');
+          if (authorizationService.addAllowedUser(numberToAdd, message.from)) {
+            await message.reply(`✅ Numéro ${numberToAdd} ajouté à la liste autorisée`);
+          } else {
+            await message.reply('❌ Numéro déjà autorisé ou erreur');
+          }
+          break;
+
+        case 'remove':
+          if (authArgs.length < 2) {
+            await message.reply('❌ Usage: !auth remove +22912345678');
+            break;
+          }
+
+          const numberToRemove = authArgs[1].replace('+', '');
+          if (authorizationService.removeAllowedUser(numberToRemove, message.from)) {
+            await message.reply(`✅ Numéro ${numberToRemove} supprimé de la liste autorisée`);
+          } else {
+            await message.reply('❌ Numéro non trouvé ou erreur');
+          }
+          break;
+
+        case 'reload':
+          authorizationService.reloadConfig();
+          await message.reply('✅ Configuration d\'autorisation rechargée');
+          break;
+
+        default:
+          await message.reply(authorizationService.getAdminHelp());
+          break;
+      }
+      break;
+
     default:
       // Réponse pour commandes non reconnues
       if (message.body.startsWith('!')) {
@@ -739,11 +897,30 @@ client.on('disconnected', (reason) => {
   console.log('📵 Client déconnecté:', reason);
   logger.logBotActivity('WARN', 'Client WhatsApp déconnecté', { reason });
 
-  // Tentative de reconnexion après 30 secondes
+  // Nettoyer les sessions si nécessaire
+  if (reason === 'LOGOUT' || reason.toString().includes('NAVIGATION')) {
+    console.log('🧹 Nettoyage des sessions en cours...');
+    cleanupSessions();
+  }
+
+  // Pour les erreurs de session fermée, redémarrer immédiatement
+  if (reason.toString().includes('Session closed') || reason.toString().includes('Protocol error')) {
+    console.log('🔄 Session fermée détectée, redémarrage immédiat...');
+    setTimeout(() => {
+      process.exit(1); // Railway redémarrera automatiquement
+    }, 2000);
+    return;
+  }
+
+  // Tentative de reconnexion après 30 secondes pour les autres cas
   setTimeout(() => {
     console.log('🔄 Tentative de reconnexion...');
     client.initialize().catch(err => {
       console.error('❌ Erreur lors de la reconnexion:', err);
+      // Si la reconnexion échoue, redémarrer
+      setTimeout(() => {
+        process.exit(1);
+      }, 10000);
     });
   }, 30000);
 });
@@ -751,6 +928,18 @@ client.on('disconnected', (reason) => {
 // Gestion des erreurs Puppeteer spécifiques
 process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+
+  // Gestion spécifique des erreurs de fichiers verrouillés
+  if (reason && reason.toString().includes('EBUSY')) {
+    console.log('🔄 Fichier verrouillé détecté, nettoyage et redémarrage...');
+    cleanupSessions().then(() => {
+      setTimeout(() => {
+        process.exit(1); // Railway redémarrera automatiquement
+      }, 5000);
+    });
+    return;
+  }
+
   if (reason && reason.toString().includes('Protocol error')) {
     console.log('🔄 Erreur Puppeteer détectée, redémarrage dans 60 secondes...');
     setTimeout(() => {
@@ -761,6 +950,16 @@ process.on('unhandledRejection', (reason, promise) => {
 
 process.on('uncaughtException', (error) => {
   console.error('❌ Uncaught Exception:', error);
+
+  // Gestion spécifique des erreurs de fichiers verrouillés
+  if (error.message.includes('EBUSY') || error.message.includes('resource busy')) {
+    console.log('🔄 Erreur de fichier verrouillé, nettoyage et redémarrage...');
+    cleanupSessions().then(() => {
+      process.exit(1);
+    });
+    return;
+  }
+
   if (error.message.includes('Protocol error') || error.message.includes('Session closed')) {
     console.log('🔄 Erreur critique Puppeteer, redémarrage immédiat...');
     process.exit(1); // Railway redémarrera automatiquement
@@ -787,6 +986,82 @@ async function startBot(retryCount = 0) {
     }
   }
 }
+
+// Fonction pour nettoyer les sessions (nettoyage doux par défaut)
+async function cleanupSessions(preserveAuth = true) {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const sessionPath = process.env.WHATSAPP_SESSION_PATH || './sessions';
+
+    if (fs.existsSync(sessionPath)) {
+      if (preserveAuth) {
+        console.log('🔐 Nettoyage doux des sessions (préservation de l\'auth)...');
+
+        const sessionDir = path.join(sessionPath, 'session');
+        if (fs.existsSync(sessionDir)) {
+          const items = fs.readdirSync(sessionDir);
+
+          for (const item of items) {
+            const itemPath = path.join(sessionDir, item);
+
+            // Préserver les fichiers d'authentification importants
+            if (item.includes('Local State') ||
+                item.includes('Preferences') ||
+                item.includes('Cookies') ||
+                item.includes('Login Data') ||
+                item.includes('Web Data')) {
+              continue; // Garder ces fichiers
+            }
+
+            // Supprimer les autres fichiers/dossiers
+            try {
+              if (fs.statSync(itemPath).isDirectory()) {
+                fs.rmSync(itemPath, { recursive: true, force: true });
+              } else {
+                fs.unlinkSync(itemPath);
+              }
+            } catch (err) {
+              // Ignorer les erreurs de suppression
+            }
+          }
+        }
+
+        console.log('✅ Nettoyage doux terminé (authentification préservée)');
+      } else {
+        console.log('🗑️ Nettoyage complet des sessions...');
+        fs.rmSync(sessionPath, { recursive: true, force: true });
+        console.log('✅ Sessions complètement supprimées');
+      }
+
+      // Attendre un peu avant de redémarrer
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  } catch (error) {
+    console.error('❌ Erreur lors du nettoyage des sessions:', error);
+  }
+}
+
+// Fonction pour arrêter proprement le client
+async function gracefulShutdown() {
+  console.log('🛑 Arrêt en cours...');
+  try {
+    if (client) {
+      await client.destroy();
+      console.log('✅ Client WhatsApp fermé proprement');
+    }
+  } catch (error) {
+    console.error('❌ Erreur lors de l\'arrêt:', error);
+  }
+
+  // Nettoyer les sessions
+  await cleanupSessions();
+  process.exit(0);
+}
+
+// Gestionnaires d'arrêt propre
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
 
 // Démarrage du bot avec gestion d'erreur
 startBot();
