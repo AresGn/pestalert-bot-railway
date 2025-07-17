@@ -132,16 +132,16 @@ client.on('ready', async () => {
     console.log(`👤 Nom du bot: ${info.pushname}`);
     console.log(`🔗 État de connexion: READY`);
 
-    // Test d'envoi de message à soi-même pour vérifier la connexion
-    setTimeout(async () => {
-      console.log('🧪 Test de connexion - envoi d\'un message de test...');
-      try {
-        const testMessage = await client.sendMessage(info.wid._serialized, '🤖 Test de connexion - Bot opérationnel');
-        console.log('✅ Test de connexion réussi - Le bot peut envoyer des messages');
-      } catch (error) {
-        console.error('❌ Test de connexion échoué:', error);
-      }
-    }, 5000);
+    // Test de connexion désactivé pour éviter les messages automatiques
+    // setTimeout(async () => {
+    //   console.log('🧪 Test de connexion - envoi d\'un message de test...');
+    //   try {
+    //     const testMessage = await client.sendMessage(info.wid._serialized, '🤖 Test de connexion - Bot opérationnel');
+    //     console.log('✅ Test de connexion réussi - Le bot peut envoyer des messages');
+    //   } catch (error) {
+    //     console.error('❌ Test de connexion échoué:', error);
+    //   }
+    // }, 5000);
 
   } catch (error) {
     console.error('❌ Erreur lors de la récupération des infos:', error);

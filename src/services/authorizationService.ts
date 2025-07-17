@@ -21,13 +21,23 @@ export class AuthorizationService {
     isAdmin: boolean;
     shouldAlert: boolean;
   } {
+    // Ignorer les messages système WhatsApp
+    if (phoneNumber.includes('@broadcast') || phoneNumber.includes('status@')) {
+      return {
+        allowed: false,
+        reason: 'Message système WhatsApp',
+        isAdmin: false,
+        shouldAlert: false // Pas d'alerte pour les messages système
+      };
+    }
+
     const result = isNumberAllowed(phoneNumber, this.config);
-    
+
     // Si non autorisé, enregistrer la tentative
     if (!result.allowed) {
       this.recordUnauthorizedAttempt(phoneNumber);
     }
-    
+
     return {
       ...result,
       shouldAlert: !result.allowed && this.config.alertOnUnauthorized

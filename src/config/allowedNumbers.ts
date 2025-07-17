@@ -38,10 +38,15 @@ export const defaultAllowedNumbers: AllowedNumbersConfig = {
   ],
   
   allowedUsers: [
-    // Exemples - remplacez par vos vrais numéros d'utilisateurs
-    // '22911111111',  // Utilisateur 1 Bénin
-    // '22922222222',  // Utilisateur 2 Bénin
-    // '22133333333',  // Utilisateur Sénégal
+    // Numéros d'utilisateurs autorisés
+    '22990646499',   // Utilisateur 1 Bénin
+    '22960813863',   // Utilisateur 2 Bénin
+    '233505538872',  // Utilisateur Ghana
+    '22548915342',   // Utilisateur Côte d'Ivoire
+    '233501650237',  // Utilisateur Ghana
+    '221763055394',  // Utilisateur Sénégal
+    '231770725649',  // Utilisateur Liberia
+    '22556235905',   // Utilisateur Côte d'Ivoire
   ],
   
   // Codes pays autorisés (sans le +)
@@ -56,7 +61,7 @@ export const defaultAllowedNumbers: AllowedNumbersConfig = {
   // 'whitelist' = Seulement les numéros dans adminNumbers + allowedUsers
   // 'country' = Tous les numéros des pays dans allowedCountryCodes
   // 'disabled' = Aucun filtrage (répond à tous)
-  filterMode: 'disabled', // 🔧 CHANGEZ EN 'whitelist' ou 'country' pour activer le filtrage
+  filterMode: 'whitelist', // 🔧 CHANGEZ EN 'whitelist' ou 'country' pour activer le filtrage
   
   // Alerter les admins en cas de tentative d'accès non autorisée
   alertOnUnauthorized: true
