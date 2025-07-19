@@ -40,6 +40,7 @@ export const defaultAllowedNumbers: AllowedNumbersConfig = {
   allowedUsers: [
     // Numéros d'utilisateurs autorisés
     '22990646499',   // Utilisateur 1 Bénin
+    '22999323073',   // Utilisateur 1 Bénin
     '22960813863',   // Utilisateur 2 Bénin
     '233505538872',  // Utilisateur Ghana
     '22548915342',   // Utilisateur Côte d'Ivoire
