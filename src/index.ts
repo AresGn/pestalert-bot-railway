@@ -11,6 +11,7 @@ import { AudioService } from './services/audioService';
 import { AlertService } from './services/alertService';
 import { dashboardIntegration } from './services/dashboardIntegrationService';
 import { AuthorizationService } from './services/authorizationService';
+import { SimplifiedMenuService } from './services/simplifiedMenuService';
 import { FarmerData } from './types';
 
 dotenv.config();
@@ -48,6 +49,12 @@ const menuService = new MenuService(userSessionService, audioService);
 const healthAnalysisService = new HealthAnalysisService();
 const alertService = new AlertService();
 const authorizationService = new AuthorizationService();
+
+// PHASE 0: Service simplifié pour MVP français
+const simplifiedMenuService = new SimplifiedMenuService(audioService, userSessionService);
+
+// Flag pour activer/désactiver le mode simplifié (Phase 0)
+const SIMPLIFIED_MODE_ENABLED = process.env.SIMPLIFIED_MODE === 'true' || true; // Activé par défaut pour Phase 0
 
 // Timestamp de démarrage du bot - IMPORTANT pour ignorer les anciens messages
 const BOT_START_TIME = Date.now();
@@ -330,44 +337,92 @@ client.on('message', async (message) => {
   }
 
   try {
-    // 1. Vérifier d'abord le déclencheur d'accueil
-    if (message.body.trim() === 'Hi PestAlerte 👋') {
-      await handleWelcomeTrigger(message);
-      return;
-    }
+    // PHASE 0: Mode simplifié français activé
+    if (SIMPLIFIED_MODE_ENABLED) {
+      console.log('🔄 Mode simplifié Phase 0 activé');
 
-    // 2. Vérifier les commandes de retour au menu
-    if (menuService.isReturnToMenuCommand(message.body)) {
-      const menuMessage = menuService.returnToMainMenu(contact.number);
-      await message.reply(menuMessage);
-      return;
-    }
+      // 1. Vérifier déclencheurs d'accueil simplifiés
+      const lowerBody = message.body.trim().toLowerCase();
+      if (lowerBody === 'salut' || lowerBody === 'bonjour' ||
+          message.body.trim() === 'Hi PestAlerte 👋') {
+        await handleSimplifiedWelcome(message);
+        return;
+      }
 
-    // 3. Vérifier les sélections de menu (1, 2, 3)
-    if (['1', '2', '3'].includes(message.body.trim())) {
-      await handleMenuSelection(message);
-      return;
-    }
+      // 2. Vérifier commandes de retour au menu
+      if (simplifiedMenuService.isReturnToMenuCommand(message.body)) {
+        const menuMessage = simplifiedMenuService.returnToMainMenu(contact.number);
+        await message.reply(menuMessage);
+        return;
+      }
 
-    // 4. Gérer les médias (photos) selon le contexte utilisateur
-    if (message.hasMedia) {
-      await handleMediaMessages(message);
-      return;
-    }
+      // 3. Vérifier sélections de menu (1, 2, 3)
+      if (['1', '2', '3'].includes(message.body.trim())) {
+        await handleSimplifiedMenuSelection(message);
+        return;
+      }
 
-    // 5. Gérer les commandes traditionnelles (!ping, !help, etc.)
-    if (message.body.startsWith('!')) {
-      await handleCommands(message);
-      return;
-    }
+      // 4. Gérer les médias avec réponses simplifiées
+      if (message.hasMedia) {
+        await handleSimplifiedMediaMessages(message);
+        return;
+      }
 
-    // 6. Réponses contextuelles selon l'état de l'utilisateur
-    await handleContextualResponses(message);
+      // 5. Gérer les commandes traditionnelles (!ping, !help, etc.)
+      if (message.body.startsWith('!')) {
+        await handleCommands(message);
+        return;
+      }
+
+      // 6. Réponses contextuelles simplifiées
+      await handleSimplifiedContextualResponses(message);
+
+    } else {
+      // Mode normal (existant)
+      // 1. Vérifier d'abord le déclencheur d'accueil
+      if (message.body.trim() === 'Hi PestAlerte 👋') {
+        await handleWelcomeTrigger(message);
+        return;
+      }
+
+      // 2. Vérifier les commandes de retour au menu
+      if (menuService.isReturnToMenuCommand(message.body)) {
+        const menuMessage = menuService.returnToMainMenu(contact.number);
+        await message.reply(menuMessage);
+        return;
+      }
+
+      // 3. Vérifier les sélections de menu (1, 2, 3)
+      if (['1', '2', '3'].includes(message.body.trim())) {
+        await handleMenuSelection(message);
+        return;
+      }
+
+      // 4. Gérer les médias (photos) selon le contexte utilisateur
+      if (message.hasMedia) {
+        await handleMediaMessages(message);
+        return;
+      }
+
+      // 5. Gérer les commandes traditionnelles (!ping, !help, etc.)
+      if (message.body.startsWith('!')) {
+        await handleCommands(message);
+        return;
+      }
+
+      // 6. Réponses contextuelles selon l'état de l'utilisateur
+      await handleContextualResponses(message);
+    }
 
   } catch (error: any) {
     console.error('Erreur lors du traitement du message:', error);
     logger.logServiceError('MESSAGE_HANDLER', error.message, contact.number);
-    await message.reply('❌ Une erreur s\'est produite. Veuillez réessayer.');
+
+    // Message d'erreur adapté au mode
+    const errorMessage = SIMPLIFIED_MODE_ENABLED
+      ? simplifiedMenuService.getErrorMessage()
+      : '❌ Une erreur s\'est produite. Veuillez réessayer.';
+    await message.reply(errorMessage);
   }
 });
 
@@ -1057,6 +1112,158 @@ async function gracefulShutdown() {
   // Nettoyer les sessions
   await cleanupSessions();
   process.exit(0);
+}
+
+// ========================================
+// PHASE 0: FONCTIONS MODE SIMPLIFIÉ
+// ========================================
+
+// Fonction pour gérer l'accueil simplifié
+async function handleSimplifiedWelcome(message: any) {
+  const contact = await message.getContact();
+  console.log(`👋 Accueil simplifié Phase 0 pour ${contact.name || contact.number}`);
+
+  try {
+    const welcomeResponse = await simplifiedMenuService.getWelcomeMessage();
+
+    // Envoyer d'abord l'audio de bienvenue
+    if (welcomeResponse.audioMessage) {
+      await message.reply(welcomeResponse.audioMessage);
+      // Attendre un peu avant d'envoyer le menu texte
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    // Puis envoyer le menu texte simplifié
+    await message.reply(welcomeResponse.textMessage);
+
+    // Mettre à jour l'état de l'utilisateur
+    userSessionService.updateSessionState(contact.number, UserState.MAIN_MENU);
+
+    logger.logBotActivity(contact.number, 'Simplified Welcome', {
+      timestamp: new Date().toISOString(),
+      mode: 'simplified_phase0'
+    });
+
+  } catch (error: any) {
+    console.error('❌ Erreur accueil simplifié:', error);
+    await message.reply(simplifiedMenuService.getErrorMessage());
+  }
+}
+
+// Fonction pour gérer les sélections de menu simplifiées
+async function handleSimplifiedMenuSelection(message: any) {
+  const contact = await message.getContact();
+  const option = message.body.trim();
+
+  console.log(`📋 Sélection menu simplifié: ${option} par ${contact.number}`);
+
+  try {
+    const result = await simplifiedMenuService.handleMenuSelection(contact.number, option);
+    await message.reply(result.message);
+
+    logger.logBotActivity(contact.number, 'Simplified Menu Selection', {
+      option: option,
+      success: result.success,
+      newState: result.newState,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    console.error('❌ Erreur sélection menu simplifié:', error);
+    await message.reply(simplifiedMenuService.getErrorMessage());
+  }
+}
+
+// Fonction pour gérer les médias avec réponses simplifiées
+async function handleSimplifiedMediaMessages(message: any) {
+  const contact = await message.getContact();
+
+  console.log(`📷 Analyse photo simplifiée pour ${contact.number}`);
+
+  try {
+    // Envoyer message d'analyse en cours
+    const analyzingResponse = await simplifiedMenuService.getAnalyzingMessage();
+    if (analyzingResponse.audioMessage) {
+      await message.reply(analyzingResponse.audioMessage);
+    }
+    await message.reply(analyzingResponse.textMessage);
+
+    // Télécharger et analyser l'image
+    const media = await message.downloadMedia();
+    const imageBuffer = Buffer.from(media.data, 'base64');
+
+    // Utiliser le système d'analyse existant
+    const analysisResult = await healthAnalysisService.analyzeCropHealth(imageBuffer, contact.number);
+
+    // Déterminer la sévérité pour la réponse simplifiée
+    let severity: 'low' | 'medium' | 'high' | 'critical' = 'medium';
+    if (analysisResult.confidence > 0.9 && !analysisResult.isHealthy) {
+      severity = 'critical';
+    } else if (analysisResult.confidence > 0.7) {
+      severity = 'high';
+    } else if (analysisResult.confidence > 0.5) {
+      severity = 'medium';
+    } else {
+      severity = 'low';
+    }
+
+    // Générer réponse simplifiée
+    const simplifiedResponse = await simplifiedMenuService.generateAnalysisResponse(
+      analysisResult.isHealthy,
+      analysisResult.confidence,
+      severity
+    );
+
+    // Envoyer audio puis texte
+    if (simplifiedResponse.audioMessage) {
+      await client.sendMessage(contact.number + '@c.us', simplifiedResponse.audioMessage);
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+
+    await message.reply(simplifiedResponse.textMessage);
+
+    // Logger l'analyse
+    logger.logBotActivity(contact.number, 'Simplified Analysis', {
+      isHealthy: analysisResult.isHealthy,
+      confidence: analysisResult.confidence,
+      severity: severity,
+      timestamp: new Date().toISOString()
+    });
+
+    // Réinitialiser l'état
+    userSessionService.resetSession(contact.number);
+
+  } catch (error: any) {
+    console.error('❌ Erreur analyse simplifiée:', error);
+
+    // Envoyer message pour photo pas claire
+    const unclearResponse = await simplifiedMenuService.getUnclearPhotoMessage();
+    if (unclearResponse.audioMessage) {
+      await message.reply(unclearResponse.audioMessage);
+    }
+    await message.reply(unclearResponse.textMessage);
+  }
+}
+
+// Fonction pour les réponses contextuelles simplifiées
+async function handleSimplifiedContextualResponses(message: any) {
+  const contact = await message.getContact();
+
+  console.log(`💬 Réponse contextuelle simplifiée pour ${contact.number}: ${message.body}`);
+
+  // Vérifier si c'est une commande simple
+  if (simplifiedMenuService.isSimpleCommand(message.body)) {
+    const helpMessage = simplifiedMenuService.getContextualHelp(contact.number);
+    await message.reply(helpMessage);
+  } else {
+    // Message non reconnu - réponse très simple
+    await message.reply("🤔 Je comprends pas\nTape 'aide' ou 'menu'");
+  }
+
+  logger.logBotActivity(contact.number, 'Simplified Contextual Response', {
+    messageBody: message.body.substring(0, 50),
+    timestamp: new Date().toISOString()
+  });
 }
 
 // Gestionnaires d'arrêt propre
