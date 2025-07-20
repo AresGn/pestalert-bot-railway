@@ -1,8 +1,8 @@
-import axios from 'axios';
 import FormData from 'form-data';
-import fs from 'fs';
+import fs from 'node:fs';
 import path from 'path';
 import sharp from 'sharp';
+import axios from 'axios';
 
 /**
  * Service de validation basé sur PlantNet API (approche recommandée)
@@ -40,7 +40,7 @@ export class PlantNetValidationService {
   // Configuration PlantNet API
   private readonly PLANTNET_CONFIG = {
     baseURL: 'https://my-api.plantnet.org/v2/identify',
-    project: 'weurope', // Peut être changé selon la région
+    project: 'all', // Changé de 'weurope' à 'all' pour inclure cultures tropicales
     dailyLimit: 500,
     apiKey: process.env.PLANTNET_API_KEY
   };
@@ -53,20 +53,37 @@ export class PlantNetValidationService {
     FALLBACK_CONFIDENCE: 0.4 // Seuil pour fallback local
   };
 
-  // Cultures agricoles supportées (basé sur OpenEPI)
+  // Cultures agricoles supportées (basé sur OpenEPI + cultures tropicales)
   private readonly AGRICULTURAL_SPECIES = [
+    // Cultures principales OpenEPI
     'zea mays',           // Maïs
-    'manihot esculenta',  // Manioc  
+    'manihot esculenta',  // Manioc
     'phaseolus vulgaris', // Haricots
     'theobroma cacao',    // Cacao
     'musa',               // Banane
+
+    // Variantes et synonymes
+    'zea',                // Maïs (genre)
+    'manihot',            // Manioc (genre)
+    'phaseolus',          // Haricots (genre)
+    'theobroma',          // Cacao (genre)
+    'musa acuminata',     // Banane (espèce)
+    'musa paradisiaca',   // Plantain
+
+    // Autres cultures importantes
     'sorghum bicolor',    // Sorgho
     'pennisetum glaucum', // Mil
     'vigna unguiculata',  // Niébé
     'oryza sativa',       // Riz
     'arachis hypogaea',   // Arachide
     'ipomoea batatas',    // Patate douce
-    'dioscorea'           // Igname
+    'dioscorea',          // Igname
+
+    // Cultures tropicales additionnelles
+    'coffea',             // Café
+    'saccharum officinarum', // Canne à sucre
+    'cocos nucifera',     // Cocotier
+    'elaeis guineensis'   // Palmier à huile
   ];
 
   // Compteur d'usage pour éviter dépassement
@@ -143,7 +160,7 @@ export class PlantNetValidationService {
   }
 
   /**
-   * Appel à l'API PlantNet
+   * Appel à l'API PlantNet (selon documentation officielle)
    */
   private async callPlantNetAPI(imageBuffer: Buffer): Promise<any> {
     if (!this.PLANTNET_CONFIG.apiKey) {
@@ -157,30 +174,29 @@ export class PlantNetValidationService {
       const tempPath = path.join(tempDir, `temp_image_${Date.now()}.jpg`);
       await sharp(imageBuffer).jpeg().toFile(tempPath);
 
-      const formData = new FormData();
-      formData.append('images', fs.createReadStream(tempPath));
-      formData.append('modifiers', JSON.stringify(["crops", "useful"]));
-      formData.append('plant-details', JSON.stringify([
-        "common_names", "url", "name_authority", "family", "genus"
-      ]));
+      // Créer FormData selon la documentation officielle
+      const form = new FormData();
 
-      const response = await axios.post(
-        `${this.PLANTNET_CONFIG.baseURL}/${this.PLANTNET_CONFIG.project}`,
-        formData,
-        {
-          headers: {
-            ...formData.getHeaders(),
-            'Api-Key': this.PLANTNET_CONFIG.apiKey
-          },
-          params: {
-            'include-related-images': false,
-            'no-reject': false,
-            'nb-results': 10,
-            'lang': 'fr'
-          },
-          timeout: 15000
-        }
-      );
+      // Ajouter l'image (paramètre requis)
+      form.append('images', fs.createReadStream(tempPath));
+
+      // Ajouter l'organe (optionnel, mais recommandé pour les cultures)
+      form.append('organs', 'leaf');
+
+      // URL selon la documentation : /v2/identify/{project}?api-key=YOUR_API_KEY
+      const url = `https://my-api.plantnet.org/v2/identify/${this.PLANTNET_CONFIG.project}?api-key=${this.PLANTNET_CONFIG.apiKey}`;
+
+      console.log(`🌱 Appel PlantNet: ${url.replace(this.PLANTNET_CONFIG.apiKey, 'API_KEY_HIDDEN')}`);
+
+      // Utiliser axios avec FormData (plus compatible que fetch pour multipart)
+      const response = await axios.post(url, form, {
+        headers: {
+          ...form.getHeaders()
+        },
+        timeout: 15000
+      });
+
+      console.log(`📊 PlantNet status: ${response.status}`);
 
       // Nettoyer le fichier temporaire
       try {
@@ -191,9 +207,14 @@ export class PlantNetValidationService {
 
       this.usage.today++;
 
-      if (response.data && response.data.results && response.data.results.length > 0) {
-        const bestMatch = response.data.results[0];
-        
+      const json = response.data;
+      console.log(`📋 PlantNet résultats: ${json.results?.length || 0} espèces trouvées`);
+
+      if (json.results && json.results.length > 0) {
+        const bestMatch = json.results[0];
+
+        console.log(`🔬 Meilleure correspondance: ${bestMatch.species.scientificNameWithoutAuthor} (${(bestMatch.score * 100).toFixed(1)}%)`);
+
         return {
           success: true,
           species: bestMatch.species.scientificNameWithoutAuthor,
@@ -202,15 +223,28 @@ export class PlantNetValidationService {
           confidence: bestMatch.score,
           source: 'PlantNet',
           raw: bestMatch,
-          allResults: response.data.results.slice(0, 5) // Top 5 pour analyse
+          allResults: json.results.slice(0, 5) // Top 5 pour analyse
         };
       }
 
       return { success: false, reason: 'Aucun résultat PlantNet' };
 
     } catch (error: any) {
-      console.error('❌ Erreur appel PlantNet:', error.message);
-      return { success: false, error: error.message };
+      console.error('❌ Erreur appel PlantNet:', error.response?.data || error.message);
+
+      // Nettoyer le fichier temporaire en cas d'erreur
+      try {
+        const os = require('os');
+        const tempDir = os.tmpdir();
+        const tempPath = path.join(tempDir, `temp_image_${Date.now()}.jpg`);
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+      } catch (e) {
+        // Ignorer
+      }
+
+      return { success: false, error: error.response?.data || error.message };
     }
   }
 
