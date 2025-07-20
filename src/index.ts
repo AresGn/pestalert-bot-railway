@@ -54,7 +54,7 @@ const authorizationService = new AuthorizationService();
 const simplifiedMenuService = new SimplifiedMenuService(audioService, userSessionService);
 
 // Flag pour activer/désactiver le mode simplifié (Phase 0)
-const SIMPLIFIED_MODE_ENABLED = process.env.SIMPLIFIED_MODE === 'true' || true; // Activé par défaut pour Phase 0
+const SIMPLIFIED_MODE_ENABLED = process.env.SIMPLIFIED_MODE === 'true';
 
 // Timestamp de démarrage du bot - IMPORTANT pour ignorer les anciens messages
 const BOT_START_TIME = Date.now();

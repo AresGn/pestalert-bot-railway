@@ -32,8 +32,8 @@ export interface AllowedNumbersConfig {
 export const defaultAllowedNumbers: AllowedNumbersConfig = {
   // 🔧 MODIFIEZ CES NUMÉROS SELON VOS BESOINS
   adminNumbers: [
-    // Exemples - remplacez par vos vrais numéros d'admin
-    // '22912345678',  // Admin principal Bénin
+    // Ajoutez votre numéro ici pour tester la Phase 0
+    '22990646499',  // Admin principal - remplacez par votre numéro
     // '33123456789',  // Admin France
   ],
   

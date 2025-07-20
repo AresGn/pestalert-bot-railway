@@ -7,6 +7,7 @@ dist/
 sessions/*
 !sessions/.gitkeep
 test-sessions/
+.wwebjs_auth/
 .DS_Store
 
 # Fichiers contenant des secrets (si créés localement)
