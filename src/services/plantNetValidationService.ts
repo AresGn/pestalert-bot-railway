@@ -4,6 +4,9 @@ import path from 'path';
 import sharp from 'sharp';
 import axios from 'axios';
 
+// Charger les variables d'environnement
+require('dotenv').config();
+
 /**
  * Service de validation basé sur PlantNet API (approche recommandée)
  * Implémente la stratégie du fichier free-apis-implementation.js
@@ -174,14 +177,17 @@ export class PlantNetValidationService {
       const tempPath = path.join(tempDir, `temp_image_${Date.now()}.jpg`);
       await sharp(imageBuffer).jpeg().toFile(tempPath);
 
-      // Créer FormData selon la documentation officielle
+      // Créer FormData selon la documentation officielle PlantNet
       const form = new FormData();
 
-      // Ajouter l'image (paramètre requis)
-      form.append('images', fs.createReadStream(tempPath));
-
-      // Ajouter l'organe (optionnel, mais recommandé pour les cultures)
+      // Ajouter l'organe AVANT l'image (ordre important selon doc)
       form.append('organs', 'leaf');
+
+      // Ajouter l'image (paramètre requis) - utiliser 'images' au pluriel
+      form.append('images', fs.createReadStream(tempPath), {
+        filename: 'image.jpg',
+        contentType: 'image/jpeg'
+      });
 
       // URL selon la documentation : /v2/identify/{project}?api-key=YOUR_API_KEY
       const url = `https://my-api.plantnet.org/v2/identify/${this.PLANTNET_CONFIG.project}?api-key=${this.PLANTNET_CONFIG.apiKey}`;
@@ -254,7 +260,7 @@ export class PlantNetValidationService {
   private analyzeAgriculturalSpecies(plantNetResult: any): any {
     const scientificName = plantNetResult.species?.toLowerCase() || '';
     const commonName = plantNetResult.commonName?.toLowerCase() || '';
-    
+
     // Vérifier correspondance avec espèces agricoles connues
     let isAgriculturalSpecies = false;
     let matchedSpecies = '';
@@ -271,7 +277,7 @@ export class PlantNetValidationService {
 
     // Vérifier aussi dans le nom commun
     const agriculturalCommonNames = [
-      'maïs', 'corn', 'manioc', 'cassava', 'haricot', 'bean', 
+      'maïs', 'corn', 'manioc', 'cassava', 'haricot', 'bean',
       'cacao', 'cocoa', 'banane', 'banana', 'sorgho', 'sorghum'
     ];
 
@@ -281,6 +287,20 @@ export class PlantNetValidationService {
           isAgriculturalSpecies = true;
           matchedSpecies = commonAgri;
           speciesConfidence = (plantNetResult.confidence || 0) * 0.8; // Légèrement moins fiable
+          break;
+        }
+      }
+    }
+
+    // NOUVEAU: Vérifier dans tous les résultats PlantNet pour Theobroma
+    if (!isAgriculturalSpecies && plantNetResult.allResults) {
+      for (const result of plantNetResult.allResults) {
+        const resultSpecies = result.species?.scientificNameWithoutAuthor?.toLowerCase() || '';
+        if (resultSpecies.includes('theobroma cacao')) {
+          isAgriculturalSpecies = true;
+          matchedSpecies = 'theobroma cacao';
+          speciesConfidence = result.score;
+          console.log(`🍫 Theobroma cacao trouvé dans les résultats (${(result.score * 100).toFixed(1)}%)`);
           break;
         }
       }
@@ -326,8 +346,16 @@ export class PlantNetValidationService {
       finalConfidence -= 0.3;
     }
 
-    // 3. Décision finale
-    isValid = finalConfidence >= this.THRESHOLDS.MIN_AGRICULTURAL_CONFIDENCE && agriculturalAnalysis.isCrop;
+    // 3. Décision finale avec bonus pour Theobroma cacao
+    let threshold = this.THRESHOLDS.MIN_AGRICULTURAL_CONFIDENCE;
+
+    // Bonus spécial pour Theobroma cacao (culture importante mais difficile à identifier)
+    if (agriculturalAnalysis.matchedSpecies === 'theobroma cacao') {
+      threshold = 0.5; // Seuil réduit pour le cacao
+      reasons.push('Seuil réduit pour Theobroma cacao (culture tropicale)');
+    }
+
+    isValid = finalConfidence >= threshold && agriculturalAnalysis.isCrop;
     
     if (!isValid) {
       reasons.push(`Score final insuffisant (${(finalConfidence * 100).toFixed(1)}% < ${(this.THRESHOLDS.MIN_AGRICULTURAL_CONFIDENCE * 100).toFixed(1)}%)`);
