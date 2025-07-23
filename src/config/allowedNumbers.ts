@@ -65,7 +65,7 @@ export const defaultAllowedNumbers: AllowedNumbersConfig = {
   filterMode: 'whitelist', // 🔧 CHANGEZ EN 'whitelist' ou 'country' pour activer le filtrage
   
   // Alerter les admins en cas de tentative d'accès non autorisée
-  alertOnUnauthorized: true
+  alertOnUnauthorized: false // Changé à false pour ignorer silencieusement
 };
 
 // Fonction pour charger la configuration depuis les variables d'environnement
@@ -102,8 +102,8 @@ export function isNumberAllowed(phoneNumber: string, config: AllowedNumbersConfi
   reason: string;
   isAdmin: boolean;
 } {
-  // Nettoyer le numéro (enlever @c.us si présent)
-  const cleanNumber = phoneNumber.replace('@c.us', '');
+  // Nettoyer le numéro (enlever @c.us et + si présents)
+  const cleanNumber = phoneNumber.replace('@c.us', '').replace('+', '');
   
   // Si le filtrage est désactivé
   if (config.filterMode === 'disabled') {

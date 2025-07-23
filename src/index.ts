@@ -272,13 +272,8 @@ client.on('message', async (message) => {
       }
     }
 
-    // Optionnel : Répondre à l'utilisateur non autorisé
-    try {
-      await message.reply('🚫 Désolé, vous n\'êtes pas autorisé à utiliser ce bot.');
-    } catch (error) {
-      console.error('❌ Erreur réponse non autorisée:', error);
-    }
-
+    // Ignorer silencieusement les messages non autorisés (pas de réponse)
+    // Les logs et alertes admin sont déjà gérés ci-dessus
     return; // Arrêter le traitement du message
   }
 
