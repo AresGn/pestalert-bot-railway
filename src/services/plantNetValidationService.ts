@@ -124,13 +124,13 @@ export class PlantNetValidationService {
       
       if (plantNetResult.success) {
         console.log(`✅ PlantNet réussi: ${plantNetResult.species} (${(plantNetResult.confidence * 100).toFixed(1)}%)`);
-        
+
         // 4. Analyser si c'est une culture agricole
         const agriculturalAnalysis = this.analyzeAgriculturalSpecies(plantNetResult);
-        
+
         // 5. Décision finale
         const finalResult = this.makeFinalDecision(plantNetResult, agriculturalAnalysis);
-        
+
         return {
           isValid: finalResult.isValid,
           confidence: finalResult.confidence,
@@ -152,8 +152,36 @@ export class PlantNetValidationService {
           agricultural: agriculturalAnalysis
         };
       } else {
-        console.log('❌ PlantNet échoué, utilisation du fallback');
-        return await this.fallbackValidation(imageBuffer);
+        // Vérifier si c'est une réponse normale "aucune espèce trouvée" ou un vrai échec
+        if (plantNetResult.reason === 'Aucune espèce identifiée par PlantNet') {
+          console.log('🚫 PlantNet: Aucune plante détectée - image rejetée directement');
+
+          // C'est une réponse normale, pas un échec - rejeter l'image directement
+          return {
+            isValid: false,
+            confidence: 0,
+            reasons: [
+              'PlantNet: Aucune plante détectée',
+              'Image ne contient pas de végétation identifiable',
+              'Non appropriée pour l\'analyse agricole'
+            ],
+            suggestion: 'Envoyez une photo claire de vos cultures (feuilles, tiges, fruits)',
+            errorType: 'NOT_AGRICULTURAL',
+            sources: {
+              plantnet: plantNetResult,
+              metadata: { reason: 'No species found - normal response' }
+            },
+            agricultural: {
+              isCrop: false,
+              category: 'Non-végétal',
+              confidence: 0
+            }
+          };
+        } else {
+          // Vrai échec technique de PlantNet - utiliser fallback
+          console.log('❌ PlantNet échec technique, utilisation du fallback');
+          return await this.fallbackValidation(imageBuffer);
+        }
       }
 
     } catch (error: any) {
