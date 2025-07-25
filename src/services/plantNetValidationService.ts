@@ -236,6 +236,26 @@ export class PlantNetValidationService {
       return { success: false, reason: 'Aucun résultat PlantNet' };
 
     } catch (error: any) {
+      // Vérifier si c'est une réponse 404 "Species not found" (réponse normale de PlantNet)
+      if (error.response?.status === 404 &&
+          error.response?.data?.message === 'Species not found') {
+        console.log('📋 PlantNet: Aucune espèce trouvée (réponse normale)');
+
+        // Nettoyer le fichier temporaire
+        try {
+          const os = require('os');
+          const tempDir = os.tmpdir();
+          const tempPath = path.join(tempDir, `temp_image_${Date.now()}.jpg`);
+          if (fs.existsSync(tempPath)) {
+            fs.unlinkSync(tempPath);
+          }
+        } catch (e) {
+          // Ignorer
+        }
+
+        return { success: false, reason: 'Aucune espèce identifiée par PlantNet' };
+      }
+
       console.error('❌ Erreur appel PlantNet:', error.response?.data || error.message);
 
       // Nettoyer le fichier temporaire en cas d'erreur

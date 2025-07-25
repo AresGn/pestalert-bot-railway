@@ -1190,7 +1190,27 @@ async function handleSimplifiedMediaMessages(message: any) {
     // Utiliser le système d'analyse existant
     const analysisResult = await healthAnalysisService.analyzeCropHealth(imageBuffer, contact.number);
 
-    // Déterminer la sévérité pour la réponse simplifiée
+    // NOUVEAU: Vérifier si c'est une erreur de validation (image non-agricole)
+    if (analysisResult.confidence === 0 && !analysisResult.isHealthy && analysisResult.textMessage) {
+      console.log('🚫 Image rejetée - envoi du message d\'erreur de validation');
+
+      // C'est une erreur de validation, pas une analyse de maladie
+      // Envoyer le message d'erreur directement
+      await message.reply(analysisResult.textMessage);
+
+      // Logger l'erreur de validation
+      logger.logBotActivity(contact.number, 'Image Validation Error', {
+        error: 'Non-agricultural image',
+        recommendation: analysisResult.recommendation,
+        timestamp: new Date().toISOString()
+      });
+
+      // Réinitialiser l'état
+      userSessionService.resetSession(contact.number);
+      return; // Sortir ici, ne pas continuer avec l'analyse normale
+    }
+
+    // Déterminer la sévérité pour la réponse simplifiée (seulement pour vraies analyses)
     let severity: 'low' | 'medium' | 'high' | 'critical' = 'medium';
     if (analysisResult.confidence > 0.9 && !analysisResult.isHealthy) {
       severity = 'critical';
