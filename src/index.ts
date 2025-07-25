@@ -2,6 +2,7 @@ import { Client, LocalAuth, MessageMedia } from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import dotenv from 'dotenv';
 import express from 'express';
+import * as path from 'path';
 import { PestMonitoringService } from './services/pestMonitoringService';
 import { LoggingService } from './services/loggingService';
 import { UserSessionService, UserState } from './services/userSessionService';
@@ -1194,8 +1195,20 @@ async function handleSimplifiedMediaMessages(message: any) {
     if (analysisResult.confidence === 0 && !analysisResult.isHealthy && analysisResult.textMessage) {
       console.log('🚫 Image rejetée - envoi du message d\'erreur de validation');
 
-      // C'est une erreur de validation, pas une analyse de maladie
-      // Envoyer le message d'erreur directement
+      // 1. Envoyer d'abord l'audio d'image inappropriée
+      try {
+        const audioPath = path.join(process.cwd(), 'audio', 'fr_simple', 'image_inapproprié.mp3');
+        const audioMessage = MessageMedia.fromFilePath(audioPath);
+        await client.sendMessage(contact.number + '@c.us', audioMessage);
+        console.log('🎵 Audio image inappropriée envoyé');
+
+        // Attendre un peu avant d'envoyer le message texte
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      } catch (audioError) {
+        console.log('⚠️ Erreur envoi audio image inappropriée:', audioError);
+      }
+
+      // 2. Envoyer le message d'erreur textuel
       await message.reply(analysisResult.textMessage);
 
       // Logger l'erreur de validation
