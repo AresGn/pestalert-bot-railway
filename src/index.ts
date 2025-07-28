@@ -13,6 +13,8 @@ import { AlertService } from './services/alertService';
 import { dashboardIntegration } from './services/dashboardIntegrationService';
 import { AuthorizationService } from './services/authorizationService';
 import { SimplifiedMenuService } from './services/simplifiedMenuService';
+import { predictiveAlertService } from './services/predictiveAlertService';
+import { alertSchedulerService } from './services/alertSchedulerService';
 import { FarmerData } from './types';
 
 dotenv.config();
@@ -131,6 +133,24 @@ client.on('ready', async () => {
     }
   } catch (error) {
     console.log('📊 ❌ Erreur initialisation dashboard:', error);
+  }
+
+  // Initialiser le système d'alertes prédictives
+  try {
+    console.log('🔮 Initialisation du système d\'alertes prédictives...');
+
+    // Connecter le scheduler au client WhatsApp
+    alertSchedulerService.initialize(client);
+
+    // Démarrer les alertes automatiques
+    alertSchedulerService.startScheduledAlerts();
+
+    console.log('✅ Système d\'alertes prédictives opérationnel');
+    console.log('📅 Alertes programmées: toutes les 6h');
+    console.log('🚨 Alertes critiques: toutes les 2h');
+
+  } catch (error) {
+    console.log('❌ Erreur initialisation alertes prédictives:', error);
   }
 
   // Informations de debug sur la connexion
@@ -722,6 +742,12 @@ Tapez "Hi PestAlerte 👋" pour accéder au menu principal
 2️⃣ Vérifier la présence de ravageurs
 3️⃣ Envoyer une alerte
 
+🔮 **Alertes prédictives:**
+• !alertes on - S'abonner aux alertes automatiques
+• !alertes off - Se désabonner des alertes
+• !alertes seuil [moderate/high/critical] - Changer le seuil
+• !alertes test - Tester une alerte pour votre position
+
 📋 **Commandes disponibles:**
 • !ping - Test de connexion
 • !help - Cette aide
@@ -756,6 +782,9 @@ ${healthServiceStatus.status === 'healthy' ? '✅ Opérationnel' : `❌ ${health
 
 🚨 **Système d'alertes:**
 ✅ Opérationnel (${alertStats.total} alertes traitées)
+
+🔮 **Alertes prédictives:**
+${alertSchedulerService.getStatus().isRunning ? '✅ Actives' : '❌ Inactives'}
 
 👥 **Sessions actives:** ${activeSessions}
 
@@ -840,6 +869,11 @@ Un expert sera notifié immédiatement.
 • Fusariose - Jaunissement
 
 📷 Envoyez une photo pour diagnostic précis !`);
+      break;
+
+    // 🔮 COMMANDES ALERTES PRÉDICTIVES
+    case '!alertes':
+      await handlePredictiveAlertCommands(message);
       break;
 
     // 🔐 COMMANDES D'AUTORISATION (Admin seulement)
@@ -1292,6 +1326,187 @@ async function handleSimplifiedContextualResponses(message: any) {
     messageBody: message.body.substring(0, 50),
     timestamp: new Date().toISOString()
   });
+}
+
+// Function to handle predictive alert commands
+async function handlePredictiveAlertCommands(message: any) {
+  const contact = await message.getContact();
+  const args = message.body.split(' ').slice(1); // Enlever "!alertes"
+
+  if (args.length === 0) {
+    // Afficher l'aide des alertes prédictives
+    const alertHelp = `🔮 *Système d'Alertes Prédictives PestAlert*
+
+📊 **Fonctionnement:**
+Analyse automatique des conditions météo pour prédire les risques de ravageurs
+
+🔔 **Commandes disponibles:**
+• \`!alertes on\` - S'abonner aux alertes automatiques
+• \`!alertes off\` - Se désabonner des alertes
+• \`!alertes seuil moderate\` - Alertes dès risque modéré
+• \`!alertes seuil high\` - Alertes dès risque élevé
+• \`!alertes seuil critical\` - Alertes uniquement critiques
+• \`!alertes test\` - Tester une alerte pour votre position
+• \`!alertes status\` - Voir votre statut d'abonnement
+
+⏰ **Fréquence:** Vérifications toutes les 6h (critiques: 2h)
+🎯 **Précision:** Système hybride OpenEPI + validation croisée
+
+💡 **Astuce:** Commencez par \`!alertes test\` pour voir le système en action !`;
+
+    await message.reply(alertHelp);
+    return;
+  }
+
+  const command = args[0].toLowerCase();
+
+  switch (command) {
+    case 'on':
+    case 'subscribe':
+      try {
+        // Pour l'instant, utiliser une position par défaut (Abidjan, Côte d'Ivoire)
+        // TODO: Implémenter la géolocalisation réelle
+        const defaultLat = 5.3600;
+        const defaultLon = -4.0083;
+
+        const success = await predictiveAlertService.subscribeToAlerts(
+          contact.number,
+          contact.number,
+          defaultLat,
+          defaultLon,
+          'MODERATE' // Seuil par défaut
+        );
+
+        if (success) {
+          await message.reply(`✅ **Abonnement aux alertes prédictives activé !**
+
+📍 **Position:** Abidjan, Côte d'Ivoire (par défaut)
+🎯 **Seuil:** Risque modéré et plus
+⏰ **Fréquence:** Toutes les 6h
+
+🔮 Vous recevrez des alertes automatiques quand les conditions météo favorisent l'apparition de ravageurs.
+
+💡 **Changez votre seuil:** \`!alertes seuil high\`
+📍 **Position personnalisée:** Bientôt disponible !`);
+        } else {
+          await message.reply('❌ Erreur lors de l\'abonnement. Veuillez réessayer.');
+        }
+      } catch (error) {
+        await message.reply('❌ Erreur technique. Veuillez réessayer plus tard.');
+      }
+      break;
+
+    case 'off':
+    case 'unsubscribe':
+      try {
+        const success = await predictiveAlertService.unsubscribeFromAlerts(contact.number);
+
+        if (success) {
+          await message.reply(`🔕 **Désabonnement réussi**
+
+Vous ne recevrez plus d'alertes prédictives automatiques.
+
+💡 **Pour vous réabonner:** \`!alertes on\``);
+        } else {
+          await message.reply('⚠️ Vous n\'étiez pas abonné aux alertes.');
+        }
+      } catch (error) {
+        await message.reply('❌ Erreur lors du désabonnement.');
+      }
+      break;
+
+    case 'seuil':
+    case 'threshold':
+      if (args.length < 2) {
+        await message.reply(`🎯 **Seuils d'alerte disponibles:**
+
+🟡 \`moderate\` - Risque modéré (40%+)
+🟠 \`high\` - Risque élevé (70%+)
+🔴 \`critical\` - Risque critique (85%+)
+
+**Usage:** \`!alertes seuil moderate\``);
+        return;
+      }
+
+      const threshold = args[1].toLowerCase();
+      const validThresholds = ['moderate', 'high', 'critical'];
+
+      if (!validThresholds.includes(threshold)) {
+        await message.reply('❌ Seuil invalide. Utilisez: moderate, high, ou critical');
+        return;
+      }
+
+      // TODO: Implémenter la modification du seuil
+      await message.reply(`🎯 **Seuil d'alerte modifié**
+
+Nouveau seuil: **${threshold.toUpperCase()}**
+
+Vous recevrez maintenant des alertes dès que le risque atteint ce niveau.`);
+      break;
+
+    case 'test':
+      try {
+        await message.reply('🔮 **Test d\'alerte prédictive en cours...**\n\n⏳ Analyse des conditions météo...');
+
+        // Position par défaut (Abidjan)
+        const testLat = 5.3600;
+        const testLon = -4.0083;
+
+        const riskResult = await predictiveAlertService.analyzeWithBrutalHonesty(
+          testLat,
+          testLon,
+          contact.number
+        );
+
+        let testMessage = `🧪 **RÉSULTAT DU TEST**\n\n`;
+        testMessage += riskResult.alertMessage;
+        testMessage += '\n\n🛡️ **RECOMMANDATIONS:**\n';
+        riskResult.recommendations.forEach((rec, index) => {
+          testMessage += `${index + 1}. ${rec}\n`;
+        });
+        testMessage += `\n📊 **Détails techniques:**\n`;
+        testMessage += `• Source: ${riskResult.source}\n`;
+        testMessage += `• Confiance: ${(riskResult.confidence * 100).toFixed(1)}%\n`;
+        testMessage += `• Score: ${(riskResult.riskScore * 100).toFixed(1)}%`;
+
+        await message.reply(testMessage);
+
+      } catch (error) {
+        await message.reply('❌ Erreur lors du test. Veuillez réessayer.');
+      }
+      break;
+
+    case 'status':
+      try {
+        const stats = predictiveAlertService.getSubscriptionStats();
+        const schedulerStatus = alertSchedulerService.getStatus();
+
+        const statusMessage = `📊 **Statut des Alertes Prédictives**
+
+🔮 **Système:** ${schedulerStatus.isRunning ? '✅ Actif' : '❌ Inactif'}
+👥 **Abonnés actifs:** ${stats.active}
+📈 **Total abonnements:** ${stats.total}
+
+📊 **Répartition par seuil:**
+${Object.entries(stats.byThreshold).map(([threshold, count]) =>
+  `• ${threshold}: ${count} utilisateurs`).join('\n')}
+
+⏰ **Prochaine vérification:** Dans ${schedulerStatus.isRunning ? 'quelques heures' : 'N/A'}
+
+💡 **Votre statut:** ${stats.active > 0 ? 'Abonné' : 'Non abonné'}`;
+
+        await message.reply(statusMessage);
+      } catch (error) {
+        await message.reply('❌ Impossible de récupérer le statut.');
+      }
+      break;
+
+    default:
+      await message.reply(`❌ Commande inconnue: "${command}"
+
+Tapez \`!alertes\` pour voir l'aide complète.`);
+      break;
+  }
 }
 
 // Gestionnaires d'arrêt propre

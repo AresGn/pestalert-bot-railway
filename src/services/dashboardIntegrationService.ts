@@ -13,7 +13,7 @@ export class DashboardIntegrationService {
 
   constructor() {
     this.isEnabled = process.env.DASHBOARD_INTEGRATION_ENABLED === 'true';
-    this.dashboardApiUrl = process.env.DASHBOARD_API_URL || 'http://localhost:3001';
+    this.dashboardApiUrl = process.env.DASHBOARD_API_URL || 'https://pestalert-dashboard.vercel.app';
 
     if (this.isEnabled) {
       this.initializeApiClient();
