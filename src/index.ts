@@ -353,6 +353,20 @@ client.on('message', async (message) => {
   }
 
   try {
+    // PRIORITÉ 1: Commandes d'alertes prédictives (avant mode simplifié)
+    if (message.body.startsWith('!alertes')) {
+      console.log('🔮 Commande d\'alertes prédictives détectée');
+      await handlePredictiveAlertCommands(message);
+      return;
+    }
+
+    // PRIORITÉ 2: Autres commandes système (avant mode simplifié)
+    if (message.body.startsWith('!')) {
+      console.log('🔧 Commande système détectée');
+      await handleCommands(message);
+      return;
+    }
+
     // PHASE 0: Mode simplifié français activé
     if (SIMPLIFIED_MODE_ENABLED) {
       console.log('🔄 Mode simplifié Phase 0 activé');
@@ -384,11 +398,7 @@ client.on('message', async (message) => {
         return;
       }
 
-      // 5. Gérer les commandes traditionnelles (!ping, !help, etc.)
-      if (message.body.startsWith('!')) {
-        await handleCommands(message);
-        return;
-      }
+      // 5. Les commandes sont déjà traitées en priorité plus haut
 
       // 6. Réponses contextuelles simplifiées
       await handleSimplifiedContextualResponses(message);
@@ -420,11 +430,7 @@ client.on('message', async (message) => {
         return;
       }
 
-      // 5. Gérer les commandes traditionnelles (!ping, !help, etc.)
-      if (message.body.startsWith('!')) {
-        await handleCommands(message);
-        return;
-      }
+      // 5. Les commandes sont déjà traitées en priorité plus haut
 
       // 6. Réponses contextuelles selon l'état de l'utilisateur
       await handleContextualResponses(message);

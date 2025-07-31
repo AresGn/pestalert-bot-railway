@@ -62,6 +62,13 @@ export class DashboardIntegrationService {
     if (!this.isEnabled || !this.apiClient) return false;
 
     try {
+      // TODO: Implémenter l'authentification réelle quand l'endpoint sera disponible
+      // Pour l'instant, simuler une authentification réussie
+      console.log('⚠️ Authentification dashboard simulée (endpoint non disponible)');
+      this.apiToken = 'simulated-token';
+      return true;
+
+      /* Code original à réactiver quand l'endpoint sera prêt:
       const response = await this.apiClient.post('/auth/bot-login', {
         botId: 'pestalert-railway-bot',
         secret: process.env.BOT_API_SECRET || 'default-bot-secret'
@@ -72,6 +79,7 @@ export class DashboardIntegrationService {
         console.log('✅ Bot authentifié auprès du dashboard API');
         return true;
       }
+      */
     } catch (error) {
       console.error('❌ Échec de l\'authentification bot:', error);
     }
