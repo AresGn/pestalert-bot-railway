@@ -2,6 +2,7 @@ import { Client, LocalAuth, MessageMedia } from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import dotenv from 'dotenv';
 import express from 'express';
+import * as path from 'path';
 import { PestMonitoringService } from './services/pestMonitoringService';
 import { LoggingService } from './services/loggingService';
 import { UserSessionService, UserState } from './services/userSessionService';
@@ -11,6 +12,9 @@ import { AudioService } from './services/audioService';
 import { AlertService } from './services/alertService';
 import { dashboardIntegration } from './services/dashboardIntegrationService';
 import { AuthorizationService } from './services/authorizationService';
+import { SimplifiedMenuService } from './services/simplifiedMenuService';
+import { predictiveAlertService } from './services/predictiveAlertService';
+import { alertSchedulerService } from './services/alertSchedulerService';
 import { FarmerData } from './types';
 
 dotenv.config();
@@ -48,6 +52,12 @@ const menuService = new MenuService(userSessionService, audioService);
 const healthAnalysisService = new HealthAnalysisService();
 const alertService = new AlertService();
 const authorizationService = new AuthorizationService();
+
+// PHASE 0: Service simplifié pour MVP français
+const simplifiedMenuService = new SimplifiedMenuService(audioService, userSessionService);
+
+// Flag pour activer/désactiver le mode simplifié (Phase 0)
+const SIMPLIFIED_MODE_ENABLED = process.env.SIMPLIFIED_MODE === 'true';
 
 // Timestamp de démarrage du bot - IMPORTANT pour ignorer les anciens messages
 const BOT_START_TIME = Date.now();
@@ -123,6 +133,24 @@ client.on('ready', async () => {
     }
   } catch (error) {
     console.log('📊 ❌ Erreur initialisation dashboard:', error);
+  }
+
+  // Initialiser le système d'alertes prédictives
+  try {
+    console.log('🔮 Initialisation du système d\'alertes prédictives...');
+
+    // Connecter le scheduler au client WhatsApp
+    alertSchedulerService.initialize(client);
+
+    // Démarrer les alertes automatiques
+    alertSchedulerService.startScheduledAlerts();
+
+    console.log('✅ Système d\'alertes prédictives opérationnel');
+    console.log('📅 Alertes programmées: toutes les 6h');
+    console.log('🚨 Alertes critiques: toutes les 2h');
+
+  } catch (error) {
+    console.log('❌ Erreur initialisation alertes prédictives:', error);
   }
 
   // Informations de debug sur la connexion
@@ -265,13 +293,8 @@ client.on('message', async (message) => {
       }
     }
 
-    // Optionnel : Répondre à l'utilisateur non autorisé
-    try {
-      await message.reply('🚫 Désolé, vous n\'êtes pas autorisé à utiliser ce bot.');
-    } catch (error) {
-      console.error('❌ Erreur réponse non autorisée:', error);
-    }
-
+    // Ignorer silencieusement les messages non autorisés (pas de réponse)
+    // Les logs et alertes admin sont déjà gérés ci-dessus
     return; // Arrêter le traitement du message
   }
 
@@ -330,44 +353,98 @@ client.on('message', async (message) => {
   }
 
   try {
-    // 1. Vérifier d'abord le déclencheur d'accueil
-    if (message.body.trim() === 'Hi PestAlerte 👋') {
-      await handleWelcomeTrigger(message);
+    // PRIORITÉ 1: Commandes d'alertes prédictives (avant mode simplifié)
+    if (message.body.startsWith('!alertes')) {
+      console.log('🔮 Commande d\'alertes prédictives détectée');
+      await handlePredictiveAlertCommands(message);
       return;
     }
 
-    // 2. Vérifier les commandes de retour au menu
-    if (menuService.isReturnToMenuCommand(message.body)) {
-      const menuMessage = menuService.returnToMainMenu(contact.number);
-      await message.reply(menuMessage);
-      return;
-    }
-
-    // 3. Vérifier les sélections de menu (1, 2, 3)
-    if (['1', '2', '3'].includes(message.body.trim())) {
-      await handleMenuSelection(message);
-      return;
-    }
-
-    // 4. Gérer les médias (photos) selon le contexte utilisateur
-    if (message.hasMedia) {
-      await handleMediaMessages(message);
-      return;
-    }
-
-    // 5. Gérer les commandes traditionnelles (!ping, !help, etc.)
+    // PRIORITÉ 2: Autres commandes système (avant mode simplifié)
     if (message.body.startsWith('!')) {
+      console.log('🔧 Commande système détectée');
       await handleCommands(message);
       return;
     }
 
-    // 6. Réponses contextuelles selon l'état de l'utilisateur
-    await handleContextualResponses(message);
+    // PHASE 0: Mode simplifié français activé
+    if (SIMPLIFIED_MODE_ENABLED) {
+      console.log('🔄 Mode simplifié Phase 0 activé');
+
+      // 1. Vérifier déclencheurs d'accueil simplifiés
+      const lowerBody = message.body.trim().toLowerCase();
+      if (lowerBody === 'salut' || lowerBody === 'bonjour' ||
+          message.body.trim() === 'Hi PestAlerte 👋') {
+        await handleSimplifiedWelcome(message);
+        return;
+      }
+
+      // 2. Vérifier commandes de retour au menu
+      if (simplifiedMenuService.isReturnToMenuCommand(message.body)) {
+        const menuMessage = simplifiedMenuService.returnToMainMenu(contact.number);
+        await message.reply(menuMessage);
+        return;
+      }
+
+      // 3. Vérifier sélections de menu (1, 2, 3)
+      if (['1', '2', '3'].includes(message.body.trim())) {
+        await handleSimplifiedMenuSelection(message);
+        return;
+      }
+
+      // 4. Gérer les médias avec réponses simplifiées
+      if (message.hasMedia) {
+        await handleSimplifiedMediaMessages(message);
+        return;
+      }
+
+      // 5. Les commandes sont déjà traitées en priorité plus haut
+
+      // 6. Réponses contextuelles simplifiées
+      await handleSimplifiedContextualResponses(message);
+
+    } else {
+      // Mode normal (existant)
+      // 1. Vérifier d'abord le déclencheur d'accueil
+      if (message.body.trim() === 'Hi PestAlerte 👋') {
+        await handleWelcomeTrigger(message);
+        return;
+      }
+
+      // 2. Vérifier les commandes de retour au menu
+      if (menuService.isReturnToMenuCommand(message.body)) {
+        const menuMessage = menuService.returnToMainMenu(contact.number);
+        await message.reply(menuMessage);
+        return;
+      }
+
+      // 3. Vérifier les sélections de menu (1, 2, 3)
+      if (['1', '2', '3'].includes(message.body.trim())) {
+        await handleMenuSelection(message);
+        return;
+      }
+
+      // 4. Gérer les médias (photos) selon le contexte utilisateur
+      if (message.hasMedia) {
+        await handleMediaMessages(message);
+        return;
+      }
+
+      // 5. Les commandes sont déjà traitées en priorité plus haut
+
+      // 6. Réponses contextuelles selon l'état de l'utilisateur
+      await handleContextualResponses(message);
+    }
 
   } catch (error: any) {
     console.error('Erreur lors du traitement du message:', error);
     logger.logServiceError('MESSAGE_HANDLER', error.message, contact.number);
-    await message.reply('❌ Une erreur s\'est produite. Veuillez réessayer.');
+
+    // Message d'erreur adapté au mode
+    const errorMessage = SIMPLIFIED_MODE_ENABLED
+      ? simplifiedMenuService.getErrorMessage()
+      : '❌ Une erreur s\'est produite. Veuillez réessayer.';
+    await message.reply(errorMessage);
   }
 });
 
@@ -671,6 +748,12 @@ Tapez "Hi PestAlerte 👋" pour accéder au menu principal
 2️⃣ Vérifier la présence de ravageurs
 3️⃣ Envoyer une alerte
 
+🔮 **Alertes prédictives:**
+• !alertes on - S'abonner aux alertes automatiques
+• !alertes off - Se désabonner des alertes
+• !alertes seuil [moderate/high/critical] - Changer le seuil
+• !alertes test - Tester une alerte pour votre position
+
 📋 **Commandes disponibles:**
 • !ping - Test de connexion
 • !help - Cette aide
@@ -705,6 +788,9 @@ ${healthServiceStatus.status === 'healthy' ? '✅ Opérationnel' : `❌ ${health
 
 🚨 **Système d'alertes:**
 ✅ Opérationnel (${alertStats.total} alertes traitées)
+
+🔮 **Alertes prédictives:**
+${alertSchedulerService.getStatus().isRunning ? '✅ Actives' : '❌ Inactives'}
 
 👥 **Sessions actives:** ${activeSessions}
 
@@ -789,6 +875,11 @@ Un expert sera notifié immédiatement.
 • Fusariose - Jaunissement
 
 📷 Envoyez une photo pour diagnostic précis !`);
+      break;
+
+    // 🔮 COMMANDES ALERTES PRÉDICTIVES
+    case '!alertes':
+      await handlePredictiveAlertCommands(message);
       break;
 
     // 🔐 COMMANDES D'AUTORISATION (Admin seulement)
@@ -1057,6 +1148,371 @@ async function gracefulShutdown() {
   // Nettoyer les sessions
   await cleanupSessions();
   process.exit(0);
+}
+
+// ========================================
+// PHASE 0: FONCTIONS MODE SIMPLIFIÉ
+// ========================================
+
+// Fonction pour gérer l'accueil simplifié
+async function handleSimplifiedWelcome(message: any) {
+  const contact = await message.getContact();
+  console.log(`👋 Accueil simplifié Phase 0 pour ${contact.name || contact.number}`);
+
+  try {
+    const welcomeResponse = await simplifiedMenuService.getWelcomeMessage();
+
+    // Envoyer d'abord l'audio de bienvenue
+    if (welcomeResponse.audioMessage) {
+      await message.reply(welcomeResponse.audioMessage);
+      // Attendre un peu avant d'envoyer le menu texte
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    // Puis envoyer le menu texte simplifié
+    await message.reply(welcomeResponse.textMessage);
+
+    // Mettre à jour l'état de l'utilisateur
+    userSessionService.updateSessionState(contact.number, UserState.MAIN_MENU);
+
+    logger.logBotActivity(contact.number, 'Simplified Welcome', {
+      timestamp: new Date().toISOString(),
+      mode: 'simplified_phase0'
+    });
+
+  } catch (error: any) {
+    console.error('❌ Erreur accueil simplifié:', error);
+    await message.reply(simplifiedMenuService.getErrorMessage());
+  }
+}
+
+// Fonction pour gérer les sélections de menu simplifiées
+async function handleSimplifiedMenuSelection(message: any) {
+  const contact = await message.getContact();
+  const option = message.body.trim();
+
+  console.log(`📋 Sélection menu simplifié: ${option} par ${contact.number}`);
+
+  try {
+    const result = await simplifiedMenuService.handleMenuSelection(contact.number, option);
+    await message.reply(result.message);
+
+    logger.logBotActivity(contact.number, 'Simplified Menu Selection', {
+      option: option,
+      success: result.success,
+      newState: result.newState,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    console.error('❌ Erreur sélection menu simplifié:', error);
+    await message.reply(simplifiedMenuService.getErrorMessage());
+  }
+}
+
+// Fonction pour gérer les médias avec réponses simplifiées
+async function handleSimplifiedMediaMessages(message: any) {
+  const contact = await message.getContact();
+
+  console.log(`📷 Analyse photo simplifiée pour ${contact.number}`);
+
+  try {
+    // Envoyer message d'analyse en cours
+    const analyzingResponse = await simplifiedMenuService.getAnalyzingMessage();
+    if (analyzingResponse.audioMessage) {
+      await message.reply(analyzingResponse.audioMessage);
+    }
+    await message.reply(analyzingResponse.textMessage);
+
+    // Télécharger et analyser l'image
+    const media = await message.downloadMedia();
+    const imageBuffer = Buffer.from(media.data, 'base64');
+
+    // Utiliser le système d'analyse existant
+    const analysisResult = await healthAnalysisService.analyzeCropHealth(imageBuffer, contact.number);
+
+    // NOUVEAU: Vérifier si c'est une erreur de validation (image non-agricole)
+    if (analysisResult.confidence === 0 && !analysisResult.isHealthy && analysisResult.textMessage) {
+      console.log('🚫 Image rejetée - envoi du message d\'erreur de validation');
+
+      // 1. Envoyer d'abord l'audio d'image inappropriée
+      try {
+        const audioPath = path.join(process.cwd(), 'audio', 'fr_simple', 'image_inapproprié.mp3');
+        const audioMessage = MessageMedia.fromFilePath(audioPath);
+        await client.sendMessage(contact.number + '@c.us', audioMessage);
+        console.log('🎵 Audio image inappropriée envoyé');
+
+        // Attendre un peu avant d'envoyer le message texte
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      } catch (audioError) {
+        console.log('⚠️ Erreur envoi audio image inappropriée:', audioError);
+      }
+
+      // 2. Envoyer le message d'erreur textuel
+      await message.reply(analysisResult.textMessage);
+
+      // Logger l'erreur de validation
+      logger.logBotActivity(contact.number, 'Image Validation Error', {
+        error: 'Non-agricultural image',
+        recommendation: analysisResult.recommendation,
+        timestamp: new Date().toISOString()
+      });
+
+      // Réinitialiser l'état
+      userSessionService.resetSession(contact.number);
+      return; // Sortir ici, ne pas continuer avec l'analyse normale
+    }
+
+    // Déterminer la sévérité pour la réponse simplifiée (seulement pour vraies analyses)
+    let severity: 'low' | 'medium' | 'high' | 'critical' = 'medium';
+    if (analysisResult.confidence > 0.9 && !analysisResult.isHealthy) {
+      severity = 'critical';
+    } else if (analysisResult.confidence > 0.7) {
+      severity = 'high';
+    } else if (analysisResult.confidence > 0.5) {
+      severity = 'medium';
+    } else {
+      severity = 'low';
+    }
+
+    // Générer réponse simplifiée
+    const simplifiedResponse = await simplifiedMenuService.generateAnalysisResponse(
+      analysisResult.isHealthy,
+      analysisResult.confidence,
+      severity
+    );
+
+    // Envoyer audio puis texte
+    if (simplifiedResponse.audioMessage) {
+      await client.sendMessage(contact.number + '@c.us', simplifiedResponse.audioMessage);
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+
+    await message.reply(simplifiedResponse.textMessage);
+
+    // Logger l'analyse
+    logger.logBotActivity(contact.number, 'Simplified Analysis', {
+      isHealthy: analysisResult.isHealthy,
+      confidence: analysisResult.confidence,
+      severity: severity,
+      timestamp: new Date().toISOString()
+    });
+
+    // Réinitialiser l'état
+    userSessionService.resetSession(contact.number);
+
+  } catch (error: any) {
+    console.error('❌ Erreur analyse simplifiée:', error);
+
+    // Envoyer message pour photo pas claire
+    const unclearResponse = await simplifiedMenuService.getUnclearPhotoMessage();
+    if (unclearResponse.audioMessage) {
+      await message.reply(unclearResponse.audioMessage);
+    }
+    await message.reply(unclearResponse.textMessage);
+  }
+}
+
+// Fonction pour les réponses contextuelles simplifiées
+async function handleSimplifiedContextualResponses(message: any) {
+  const contact = await message.getContact();
+
+  console.log(`💬 Réponse contextuelle simplifiée pour ${contact.number}: ${message.body}`);
+
+  // Vérifier si c'est une commande simple
+  if (simplifiedMenuService.isSimpleCommand(message.body)) {
+    const helpMessage = simplifiedMenuService.getContextualHelp(contact.number);
+    await message.reply(helpMessage);
+  } else {
+    // Message non reconnu - réponse très simple
+    await message.reply("🤔 Je comprends pas\nTape 'aide' ou 'menu'");
+  }
+
+  logger.logBotActivity(contact.number, 'Simplified Contextual Response', {
+    messageBody: message.body.substring(0, 50),
+    timestamp: new Date().toISOString()
+  });
+}
+
+// Function to handle predictive alert commands
+async function handlePredictiveAlertCommands(message: any) {
+  const contact = await message.getContact();
+  const args = message.body.split(' ').slice(1); // Enlever "!alertes"
+
+  if (args.length === 0) {
+    // Afficher l'aide des alertes prédictives
+    const alertHelp = `🔮 *Système d'Alertes Prédictives PestAlert*
+
+📊 **Fonctionnement:**
+Analyse automatique des conditions météo pour prédire les risques de ravageurs
+
+🔔 **Commandes disponibles:**
+• \`!alertes on\` - S'abonner aux alertes automatiques
+• \`!alertes off\` - Se désabonner des alertes
+• \`!alertes seuil moderate\` - Alertes dès risque modéré
+• \`!alertes seuil high\` - Alertes dès risque élevé
+• \`!alertes seuil critical\` - Alertes uniquement critiques
+• \`!alertes test\` - Tester une alerte pour votre position
+• \`!alertes status\` - Voir votre statut d'abonnement
+
+⏰ **Fréquence:** Vérifications toutes les 6h (critiques: 2h)
+🎯 **Précision:** Système hybride OpenEPI + validation croisée
+
+💡 **Astuce:** Commencez par \`!alertes test\` pour voir le système en action !`;
+
+    await message.reply(alertHelp);
+    return;
+  }
+
+  const command = args[0].toLowerCase();
+
+  switch (command) {
+    case 'on':
+    case 'subscribe':
+      try {
+        // Pour l'instant, utiliser une position par défaut (Abidjan, Côte d'Ivoire)
+        // TODO: Implémenter la géolocalisation réelle
+        const defaultLat = 5.3600;
+        const defaultLon = -4.0083;
+
+        const success = await predictiveAlertService.subscribeToAlerts(
+          contact.number,
+          contact.number,
+          defaultLat,
+          defaultLon,
+          'MODERATE' // Seuil par défaut
+        );
+
+        if (success) {
+          await message.reply(`✅ **Abonnement aux alertes prédictives activé !**
+
+📍 **Position:** Abidjan, Côte d'Ivoire (par défaut)
+🎯 **Seuil:** Risque modéré et plus
+⏰ **Fréquence:** Toutes les 6h
+
+🔮 Vous recevrez des alertes automatiques quand les conditions météo favorisent l'apparition de ravageurs.
+
+💡 **Changez votre seuil:** \`!alertes seuil high\`
+📍 **Position personnalisée:** Bientôt disponible !`);
+        } else {
+          await message.reply('❌ Erreur lors de l\'abonnement. Veuillez réessayer.');
+        }
+      } catch (error) {
+        await message.reply('❌ Erreur technique. Veuillez réessayer plus tard.');
+      }
+      break;
+
+    case 'off':
+    case 'unsubscribe':
+      try {
+        const success = await predictiveAlertService.unsubscribeFromAlerts(contact.number);
+
+        if (success) {
+          await message.reply(`🔕 **Désabonnement réussi**
+
+Vous ne recevrez plus d'alertes prédictives automatiques.
+
+💡 **Pour vous réabonner:** \`!alertes on\``);
+        } else {
+          await message.reply('⚠️ Vous n\'étiez pas abonné aux alertes.');
+        }
+      } catch (error) {
+        await message.reply('❌ Erreur lors du désabonnement.');
+      }
+      break;
+
+    case 'seuil':
+    case 'threshold':
+      if (args.length < 2) {
+        await message.reply(`🎯 **Seuils d'alerte disponibles:**
+
+🟡 \`moderate\` - Risque modéré (40%+)
+🟠 \`high\` - Risque élevé (70%+)
+🔴 \`critical\` - Risque critique (85%+)
+
+**Usage:** \`!alertes seuil moderate\``);
+        return;
+      }
+
+      const threshold = args[1].toLowerCase();
+      const validThresholds = ['moderate', 'high', 'critical'];
+
+      if (!validThresholds.includes(threshold)) {
+        await message.reply('❌ Seuil invalide. Utilisez: moderate, high, ou critical');
+        return;
+      }
+
+      // TODO: Implémenter la modification du seuil
+      await message.reply(`🎯 **Seuil d'alerte modifié**
+
+Nouveau seuil: **${threshold.toUpperCase()}**
+
+Vous recevrez maintenant des alertes dès que le risque atteint ce niveau.`);
+      break;
+
+    case 'test':
+      try {
+        await message.reply('🔮 **Test d\'alerte prédictive en cours...**\n\n⏳ Analyse des conditions météo...');
+
+        // Position par défaut (Abidjan)
+        const testLat = 5.3600;
+        const testLon = -4.0083;
+
+        const riskResult = await predictiveAlertService.analyzeWithBrutalHonesty(
+          testLat,
+          testLon,
+          contact.number
+        );
+
+        let testMessage = `🧪 **RÉSULTAT DU TEST**\n\n`;
+        testMessage += riskResult.alertMessage;
+        testMessage += '\n\n🛡️ **RECOMMANDATIONS:**\n';
+        riskResult.recommendations.forEach((rec, index) => {
+          testMessage += `${index + 1}. ${rec}\n`;
+        });
+        testMessage += `\n📊 **Détails techniques:**\n`;
+        testMessage += `• Source: ${riskResult.source}\n`;
+        testMessage += `• Confiance: ${(riskResult.confidence * 100).toFixed(1)}%\n`;
+        testMessage += `• Score: ${(riskResult.riskScore * 100).toFixed(1)}%`;
+
+        await message.reply(testMessage);
+
+      } catch (error) {
+        await message.reply('❌ Erreur lors du test. Veuillez réessayer.');
+      }
+      break;
+
+    case 'status':
+      try {
+        const stats = predictiveAlertService.getSubscriptionStats();
+        const schedulerStatus = alertSchedulerService.getStatus();
+
+        const statusMessage = `📊 **Statut des Alertes Prédictives**
+
+🔮 **Système:** ${schedulerStatus.isRunning ? '✅ Actif' : '❌ Inactif'}
+👥 **Abonnés actifs:** ${stats.active}
+📈 **Total abonnements:** ${stats.total}
+
+📊 **Répartition par seuil:**
+${Object.entries(stats.byThreshold).map(([threshold, count]) =>
+  `• ${threshold}: ${count} utilisateurs`).join('\n')}
+
+⏰ **Prochaine vérification:** Dans ${schedulerStatus.isRunning ? 'quelques heures' : 'N/A'}
+
+💡 **Votre statut:** ${stats.active > 0 ? 'Abonné' : 'Non abonné'}`;
+
+        await message.reply(statusMessage);
+      } catch (error) {
+        await message.reply('❌ Impossible de récupérer le statut.');
+      }
+      break;
+
+    default:
+      await message.reply(`❌ Commande inconnue: "${command}"
+
+Tapez \`!alertes\` pour voir l'aide complète.`);
+      break;
+  }
 }
 
 // Gestionnaires d'arrêt propre

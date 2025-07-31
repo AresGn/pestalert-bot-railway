@@ -3,6 +3,7 @@ import { ImageProcessingService } from './imageProcessingService';
 import { LoggingService } from './loggingService';
 import { ErrorHandlingService } from './errorHandlingService';
 import { AudioService } from './audioService';
+import { AgriculturalImageValidationService } from './agriculturalImageValidationService';
 import {
   CONFIDENCE_THRESHOLDS,
   determineConfidenceLevel,
@@ -27,6 +28,7 @@ export class PestMonitoringService {
   private logger: LoggingService;
   private errorHandler: ErrorHandlingService;
   private audioService: AudioService;
+  private agriculturalValidationService: AgriculturalImageValidationService;
 
   constructor() {
     this.cropHealth = new CropHealthService();
@@ -34,6 +36,7 @@ export class PestMonitoringService {
     this.logger = new LoggingService();
     this.errorHandler = new ErrorHandlingService();
     this.audioService = new AudioService();
+    this.agriculturalValidationService = new AgriculturalImageValidationService();
   }
 
   /**
@@ -46,7 +49,20 @@ export class PestMonitoringService {
       this.logger.logBotActivity(phone, 'Début de l\'analyse d\'image', { location, subscription });
       console.log(`🔍 Début de l'analyse pour ${phone}`);
 
-      // 1. Validation et prétraitement de l'image
+      // 1. NOUVEAU: Validation agricole pré-analyse
+      const agriculturalValidation = await this.agriculturalValidationService.validateAgriculturalImage(imageBuffer);
+
+      if (!agriculturalValidation.isValid) {
+        this.logger.logImageValidationError(phone, `Image non-agricole: ${agriculturalValidation.reasons.join(', ')}`);
+
+        // Pour les images non-agricoles, on retourne une réponse d'erreur
+        // en utilisant la structure AnalysisResponse mais avec des valeurs par défaut
+        throw new Error(`Image non-agricole: ${this.generateValidationErrorMessage(agriculturalValidation)}`);
+      }
+
+      console.log(`✅ Image agricole validée (confiance: ${(agriculturalValidation.confidence * 100).toFixed(1)}%)`);
+
+      // 2. Validation et prétraitement de l'image (après validation agricole)
       const imageOptimization = await this.imageProcessing.optimizeForAnalysis(imageBuffer);
       if (!imageOptimization.success) {
         this.logger.logImageValidationError(phone, imageOptimization.error || 'Erreur de validation inconnue');
@@ -54,11 +70,12 @@ export class PestMonitoringService {
       }
 
       this.logger.logBotActivity(phone, 'Image validée et prétraitée', {
-        originalSize: imageOptimization.metadata
+        originalSize: imageOptimization.metadata,
+        agriculturalConfidence: agriculturalValidation.confidence
       });
       console.log('✅ Image validée et prétraitée');
 
-      // 2. Analyse de l'image avec OpenEPI
+      // 3. Analyse de l'image avec OpenEPI (après validation agricole)
       const [binaryResult, multiClassResult] = await Promise.all([
         this.cropHealth.analyzeBinaryHealth(imageOptimization.processedImage!, { location }),
         this.cropHealth.analyzeMultiClass(imageOptimization.processedImage!)
@@ -337,6 +354,46 @@ ${this.generateRecommendations(multiClassResult)}
    */
   async getNormalAudioResponse(): Promise<any> {
     return await this.audioService.getNormalResponseAudio();
+  }
+
+  /**
+   * Générer un message d'erreur approprié pour les images non-agricoles
+   */
+  private generateValidationErrorMessage(validation: any): string {
+    const baseMessage = '🚫 **Image non appropriée pour l\'analyse**\n\n';
+
+    switch (validation.errorType) {
+      case 'NOT_AGRICULTURAL':
+        return baseMessage +
+               '🌾 Cette image ne semble pas contenir de cultures agricoles.\n\n' +
+               '💡 **Pour détecter les parasites, envoyez une photo de :**\n' +
+               '• 🌱 Maïs, manioc, haricots, cacao ou banane\n' +
+               '• 🍃 Feuilles et tiges bien visibles\n' +
+               '• 🐛 Zones suspectes ou endommagées\n' +
+               '• ☀️ Avec un bon éclairage naturel\n\n' +
+               (validation.suggestion || '') + '\n\n' +
+               '🔄 Tapez "menu" pour revenir au menu principal.';
+
+      case 'POOR_QUALITY':
+        return baseMessage +
+               '📷 La qualité de l\'image n\'est pas suffisante.\n\n' +
+               '💡 **Conseils pour une meilleure photo :**\n' +
+               '• 🎯 Prenez la photo plus près de la plante\n' +
+               '• ☀️ Assurez-vous d\'avoir assez de lumière\n' +
+               '• 📱 Évitez les photos floues\n' +
+               '• 🌿 Montrez clairement les feuilles et parasites\n\n' +
+               (validation.suggestion || '') + '\n\n' +
+               '🔄 Tapez "menu" pour revenir au menu principal.';
+
+      default:
+        return baseMessage +
+               '❓ Problème avec l\'image envoyée.\n\n' +
+               '💡 **Recommandations :**\n' +
+               '• 📷 Envoyez une photo claire de vos cultures\n' +
+               '• 🌱 Assurez-vous que la végétation est visible\n' +
+               '• 🐛 Montrez les zones où vous suspectez des parasites\n\n' +
+               '🔄 Tapez "menu" pour revenir au menu principal.';
+    }
   }
 
   /**

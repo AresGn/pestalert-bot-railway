@@ -3,6 +3,8 @@ import { AudioService } from './audioService';
 import { ImageProcessingService } from './imageProcessingService';
 import { LoggingService } from './loggingService';
 import { ConfidenceAnalysisService } from './confidenceAnalysisService';
+import { PlantNetValidationService } from './plantNetValidationService';
+import { UserGuidanceService } from './userGuidanceService';
 import { MessageMedia } from 'whatsapp-web.js';
 import { DetailedHealthAnalysis, ConfidenceLevel, AnalysisQuality } from '../types';
 
@@ -26,6 +28,8 @@ export class HealthAnalysisService {
   private imageProcessingService: ImageProcessingService;
   private logger: LoggingService;
   private confidenceAnalysisService: ConfidenceAnalysisService;
+  private plantNetValidationService: PlantNetValidationService;
+  private userGuidanceService: UserGuidanceService;
 
   constructor() {
     this.cropHealthService = new CropHealthService();
@@ -33,6 +37,8 @@ export class HealthAnalysisService {
     this.imageProcessingService = new ImageProcessingService();
     this.logger = new LoggingService();
     this.confidenceAnalysisService = new ConfidenceAnalysisService();
+    this.plantNetValidationService = new PlantNetValidationService();
+    this.userGuidanceService = new UserGuidanceService();
   }
 
   /**
@@ -42,7 +48,30 @@ export class HealthAnalysisService {
     try {
       console.log(`🌾 Début de l'analyse de santé avancée pour ${userId}`);
 
-      // 1. Prétraitement de l'image
+      // 1. NOUVEAU: Validation PlantNet pré-analyse
+      const plantNetValidation = await this.plantNetValidationService.validateAgriculturalImage(imageBuffer);
+
+      if (!plantNetValidation.isValid) {
+        console.log(`🚫 Image rejetée par PlantNet: ${plantNetValidation.reasons.join(', ')}`);
+
+        // Générer un message d'erreur approprié selon le type d'erreur
+        const errorMessage = this.generatePlantNetErrorMessage(plantNetValidation);
+
+        return {
+          isHealthy: false,
+          confidence: 0,
+          audioMessage: null,
+          textMessage: errorMessage,
+          recommendation: plantNetValidation.suggestion || "Envoyer une image de culture agricole"
+        };
+      }
+
+      console.log(`✅ Image agricole validée par PlantNet (confiance: ${(plantNetValidation.confidence * 100).toFixed(1)}%)`);
+      if (plantNetValidation.species) {
+        console.log(`🔬 Espèce identifiée: ${plantNetValidation.species.scientific} (${plantNetValidation.species.common})`);
+      }
+
+      // 2. Prétraitement de l'image (après validation PlantNet)
       const imageOptimization = await this.imageProcessingService.optimizeForAnalysis(imageBuffer);
 
       if (!imageOptimization.success) {
@@ -55,7 +84,7 @@ export class HealthAnalysisService {
         };
       }
 
-      // 2. Analyses parallèles avec OpenEPI
+      // 3. Analyses parallèles avec OpenEPI (après validation agricole)
       const [binaryResult, multiClassResult] = await Promise.all([
         this.cropHealthService.analyzeBinaryHealth(imageOptimization.processedImage!),
         this.cropHealthService.analyzeMultiClass(imageOptimization.processedImage!, { model: 'single-HLT' })
@@ -64,7 +93,7 @@ export class HealthAnalysisService {
       console.log(`📊 Résultat binaire: ${binaryResult.prediction} (${(binaryResult.confidence * 100).toFixed(1)}%)`);
       console.log(`📊 Top maladie: ${multiClassResult.top_prediction.disease} (${(multiClassResult.top_prediction.confidence * 100).toFixed(1)}%)`);
 
-      // 3. Analyse de confiance détaillée
+      // 4. Analyse de confiance détaillée
       const isHealthy = binaryResult.prediction === 'healthy';
       const confidenceLevel = this.confidenceAnalysisService.getConfidenceLevel(binaryResult.confidence);
       const analysisQuality = this.confidenceAnalysisService.determineAnalysisQuality(
@@ -314,27 +343,80 @@ ${analysis.recommendations.monitoring.map(rec => `• ${rec}`).join('\n')}`;
   }
 
   /**
+   * Générer un message d'erreur approprié pour PlantNet
+   */
+  private generatePlantNetErrorMessage(validation: any): string {
+    const baseMessage = '🚫 **Image non appropriée pour l\'analyse de santé**\n\n';
+
+    switch (validation.errorType) {
+      case 'NOT_AGRICULTURAL':
+        let message = baseMessage + '🌾 Cette image ne contient pas de culture agricole reconnue.\n\n';
+
+        if (validation.species) {
+          message += `🔬 **PlantNet a identifié:** ${validation.species.scientific}\n`;
+          message += `📛 **Nom commun:** ${validation.species.common}\n\n`;
+          message += '💡 Cette espèce n\'est pas dans notre base de cultures agricoles.\n\n';
+        }
+
+        message += '🌱 **Cultures supportées par notre système:**\n';
+        message += '• 🌽 Maïs (Zea mays)\n';
+        message += '• 🍠 Manioc (Manihot esculenta)\n';
+        message += '• 🫘 Haricots (Phaseolus vulgaris)\n';
+        message += '• 🍫 Cacao (Theobroma cacao)\n';
+        message += '• 🍌 Banane (Musa spp.)\n\n';
+
+        return message + '🔄 Tapez "menu" pour revenir au menu principal.';
+
+      case 'API_LIMIT':
+        return baseMessage +
+               '⚠️ Limite d\'utilisation de l\'API atteinte.\n\n' +
+               '💡 **Solutions:**\n' +
+               '• 🕐 Réessayez dans quelques heures\n' +
+               '• 📷 L\'analyse basique est utilisée en attendant\n\n' +
+               '🔄 Tapez "menu" pour revenir au menu principal.';
+
+      case 'POOR_QUALITY':
+        return baseMessage +
+               '📷 La qualité de l\'image n\'est pas suffisante.\n\n' +
+               '💡 **Conseils pour une meilleure photo:**\n' +
+               '• 🎯 Prenez la photo plus près de la plante\n' +
+               '• ☀️ Assurez-vous d\'avoir assez de lumière\n' +
+               '• 📱 Évitez les photos floues\n' +
+               '• 🌿 Montrez clairement les feuilles\n\n' +
+               '🔄 Tapez "menu" pour revenir au menu principal.';
+
+      default:
+        return baseMessage +
+               '❓ Problème lors de l\'identification.\n\n' +
+               '💡 **Recommandations:**\n' +
+               '• 📷 Envoyez une photo claire de vos cultures\n' +
+               '• 🌱 Assurez-vous que la végétation est visible\n\n' +
+               '🔄 Tapez "menu" pour revenir au menu principal.';
+    }
+  }
+
+  /**
    * Vérifier le statut du service
    */
   async checkServiceStatus(): Promise<{ status: string; error?: string }> {
     try {
       const cropHealthStatus = await this.cropHealthService.checkStatus();
       const audioStatus = this.audioService.checkAudioFiles();
-      
+
       if (cropHealthStatus.status !== 'healthy') {
         return {
           status: 'error',
           error: 'Service OpenEPI non disponible'
         };
       }
-      
+
       if (!audioStatus.available) {
         return {
           status: 'warning',
           error: `Fichiers audio manquants: ${audioStatus.missing.join(', ')}`
         };
       }
-      
+
       return { status: 'healthy' };
     } catch (error: any) {
       return {

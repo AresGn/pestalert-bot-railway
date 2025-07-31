@@ -32,8 +32,8 @@ export interface AllowedNumbersConfig {
 export const defaultAllowedNumbers: AllowedNumbersConfig = {
   // 🔧 MODIFIEZ CES NUMÉROS SELON VOS BESOINS
   adminNumbers: [
-    // Exemples - remplacez par vos vrais numéros d'admin
-    // '22912345678',  // Admin principal Bénin
+    // Ajoutez votre numéro ici pour tester la Phase 0
+    '22990646499',  // Admin principal - remplacez par votre numéro
     // '33123456789',  // Admin France
   ],
   
@@ -65,7 +65,7 @@ export const defaultAllowedNumbers: AllowedNumbersConfig = {
   filterMode: 'whitelist', // 🔧 CHANGEZ EN 'whitelist' ou 'country' pour activer le filtrage
   
   // Alerter les admins en cas de tentative d'accès non autorisée
-  alertOnUnauthorized: true
+  alertOnUnauthorized: false // Changé à false pour ignorer silencieusement
 };
 
 // Fonction pour charger la configuration depuis les variables d'environnement
@@ -102,8 +102,8 @@ export function isNumberAllowed(phoneNumber: string, config: AllowedNumbersConfi
   reason: string;
   isAdmin: boolean;
 } {
-  // Nettoyer le numéro (enlever @c.us si présent)
-  const cleanNumber = phoneNumber.replace('@c.us', '');
+  // Nettoyer le numéro (enlever @c.us et + si présents)
+  const cleanNumber = phoneNumber.replace('@c.us', '').replace('+', '');
   
   // Si le filtrage est désactivé
   if (config.filterMode === 'disabled') {

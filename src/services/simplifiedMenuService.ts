@@ -22,7 +22,7 @@ export class SimplifiedMenuService {
     return {
       welcome: {
         text: "👋 Salut ami agriculteur!\n\n🌾 PestAlert t'aide:\n1️⃣ 📷 Photo plant\n2️⃣ 🚨 Urgent\n3️⃣ ❓ Aide\n\nTape: 1, 2 ou 3",
-        audio: "welcome_simple.mp3"
+        audio: "fr_simple/welcome_simple.mp3"
       },
       menu: {
         text: "🌾 Ton plant:\n1️⃣ 📷 Photo → 🎵\n2️⃣ 🚨 Urgent\n3️⃣ ❓ Aide\n\nTape: 1, 2 ou 3",
@@ -30,23 +30,23 @@ export class SimplifiedMenuService {
       },
       healthy: {
         text: "✅ Très bien!\nTon plant va bien! 👍🌱\nContinue comme ça!",
-        audio: "healthy_simple.mp3"
+        audio: "fr_simple/healthy_simple.mp3"
       },
       diseased: {
         text: "⚠️ Attention!\nPetites bêtes détectées! 🐛\nTraite rapidement!",
-        audio: "diseased_simple.mp3"
+        audio: "fr_simple/diseased_simple.mp3"
       },
       critical: {
         text: "🚨 URGENT!\nTon plant très malade! 😰\nAppelle expert maintenant! 📞",
-        audio: "critical_simple.mp3"
+        audio: "fr_simple/critical_simple.mp3"
       },
       unclear: {
         text: "📷 Photo pas claire\nReprends avec lumière ☀️\nMerci!",
-        audio: "unclear_simple.mp3"
+        audio: "fr_simple/unclear_simple.mp3"
       },
       analyzing: {
         text: "🔍 Analyse en cours...\nPatiente un moment ⏳",
-        audio: "analyzing_simple.mp3"
+        audio: "fr_simple/analyzing_simple.mp3"
       },
       help: {
         text: "❓ Aide PestAlert:\n• Envoie photo plant 📷\n• Je dis si va bien ✅\n• Je t'aide si problème 🆘\n\nTape 'menu' pour revenir",

@@ -48,7 +48,7 @@ export class AuthorizationService {
    * Vérifier si un numéro est administrateur
    */
   public isAdmin(phoneNumber: string): boolean {
-    const cleanNumber = phoneNumber.replace('@c.us', '');
+    const cleanNumber = phoneNumber.replace('@c.us', '').replace('+', '');
     return this.config.adminNumbers.includes(cleanNumber);
   }
 
@@ -95,7 +95,7 @@ export class AuthorizationService {
       return false;
     }
 
-    const cleanNumber = phoneNumber.replace('@c.us', '');
+    const cleanNumber = phoneNumber.replace('@c.us', '').replace('+', '');
     if (!this.config.allowedUsers.includes(cleanNumber)) {
       this.config.allowedUsers.push(cleanNumber);
       this.logger.logBotActivity('ADMIN', `Numéro ajouté à la liste autorisée: ${cleanNumber}`, {
@@ -114,7 +114,7 @@ export class AuthorizationService {
       return false;
     }
 
-    const cleanNumber = phoneNumber.replace('@c.us', '');
+    const cleanNumber = phoneNumber.replace('@c.us', '').replace('+', '');
     const index = this.config.allowedUsers.indexOf(cleanNumber);
     if (index > -1) {
       this.config.allowedUsers.splice(index, 1);
@@ -149,7 +149,7 @@ export class AuthorizationService {
    * Enregistrer une tentative d'accès non autorisée
    */
   private recordUnauthorizedAttempt(phoneNumber: string): void {
-    const cleanNumber = phoneNumber.replace('@c.us', '');
+    const cleanNumber = phoneNumber.replace('@c.us', '').replace('+', '');
     const currentAttempts = this.unauthorizedAttempts.get(cleanNumber) || 0;
     this.unauthorizedAttempts.set(cleanNumber, currentAttempts + 1);
     
